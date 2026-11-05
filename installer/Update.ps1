@@ -45,7 +45,7 @@ Say "Checking GitHub for the newest version..."
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $headers = @{ "User-Agent" = "msm-a11y-updater" }
-    # /releases (not /releases/latest): the alphas are pre-releases, which "latest" skips.
+    # /releases rather than /releases/latest, so a pre-release made by hand is still found.
     $releases = Invoke-RestMethod -Uri "$RepoApi/releases?per_page=20" -Headers $headers
 } catch {
     Fail "could not reach GitHub ($($_.Exception.Message)). Check your internet connection and try again."

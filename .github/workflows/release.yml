@@ -1,5 +1,6 @@
 # Builds the mod on every version tag and publishes a player-ready zip.
-# Tag with a hyphen (v0.1.0-alpha) to publish it as a pre-release.
+# Every tag is published as a normal release marked Latest, alphas included,
+# so the "latest release" link always points at the newest build.
 # Run it by hand (Actions tab) to get the zip as a build artifact without releasing.
 name: Release
 
@@ -65,5 +66,5 @@ jobs:
           $ghArgs = @($tag, (Get-ChildItem release/*.zip).FullName,
                       "--title", "My Singing Monsters Access $tag",
                       "--notes-file", ".github/RELEASE_NOTES.md")
-          if ($tag -like "*-*") { $ghArgs += "--prerelease" }
+          $ghArgs += "--latest"
           gh release create @ghArgs

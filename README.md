@@ -121,7 +121,7 @@ powershell -File scripts\Build-MenuOverrides.ps1 -GamePath "<game folder>" -Depl
 powershell -File scripts\Make-Release.ps1 -Version 0.1.0   (optional: the player zip)
 ```
 
-Pushing a tag such as `v0.1.0` (or `v0.1.0-alpha` for a pre-release) runs the GitHub Actions workflow, which builds everything and attaches the zip to a new release.
+Pushing a tag such as `v0.1.0` runs the GitHub Actions workflow, which builds everything and attaches the zip to a new release marked Latest.
 
 ## Credits
 
