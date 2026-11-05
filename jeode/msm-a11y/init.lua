@@ -987,12 +987,22 @@ local pending = {}
 local function later(seconds, fn)
     pending[#pending + 1] = { t = clock() + seconds, fn = fn }
 end
-local function runPending(now)
+-- An action with p.perRoot runs once for each menu that ticks after its time
+-- (it gets that menu's live root) until p.stop; anything else runs once.
+local function runPending(now, root)
     if #pending == 0 then return end
     local list = pending
     pending = {}                  -- actions may schedule more via later()
     for _, p in ipairs(list) do
-        if now >= p.t then pcall(p.fn) else pending[#pending + 1] = p end
+        if now < p.t then
+            pending[#pending + 1] = p
+        elseif p.perRoot then
+            local key = tostring(root)
+            if root and not p.done[key] then p.done[key] = true; pcall(p.fn, root) end
+            if now < p.stop then pending[#pending + 1] = p end
+        else
+            pcall(p.fn)
+        end
     end
 end
 
@@ -1003,7 +1013,7 @@ local walletHook = nil     -- set to watchWallet further down
 
 local function menuTick(root, file)
     local now = clock()
-    runPending(now)
+    runPending(now, root)
     if file == "contextbar" and contextbarHook then pcall(contextbarHook) end
     if file == "hud" and readyHook then pcall(readyHook, now) end
     if walletHook then pcall(walletHook, now) end
@@ -2333,24 +2343,22 @@ end
 -- press themselves when Enter is released. So after we press No, the game
 -- would press Yes on key up and win. Disarm those buttons for a moment: clear
 -- the key they caught and switch their touch off until Enter is released.
-function nav.muteGameEnter()
-    local confirmKey = nil
-    pcall(function() confirmKey = tonumber(game.confirmButton()) end)
-    if not confirmKey or confirmKey == 0 then return end
-    local now, muted, budget = clock(), {}, 3000
+--
+-- Element handles must never outlive the frame: pressing a button can close
+-- the screen (Market, a confirmation), and writing to a freed element crashes
+-- the game outright (pcall can't catch it). So mute only on menus that ticked
+-- just now, BEFORE the press, and switch back on from inside each menu's own
+-- tick (runPending perRoot), matching buttons by identity, not by a kept handle.
+do
+local MUTE_SECONDS = 0.6
+local function eachEnterButton(root, confirmKey, fn)
+    local budget = 3000
     local function walk(el, depth)
         if depth > 12 or budget <= 0 then return end
         budget = budget - 1
         pcall(function()
             local tv = el:templateVars()
-            if tonumber(tv.buttonMapping) == confirmKey or tonumber(tv.buttonMappingAlt) == confirmKey then
-                pcall(function() el("buttonDown"):SetInt(0) end)
-                local touch = el["Touch"]
-                if touch("enabled"):GetInt() ~= 0 then
-                    touch("enabled"):SetInt(0)
-                    muted[#muted + 1] = touch
-                end
-            end
+            if tonumber(tv.buttonMapping) == confirmKey or tonumber(tv.buttonMappingAlt) == confirmKey then fn(el) end
         end)
         local kids = nil; pcall(function() kids = el:elements() end)
         local n = 0; pcall(function() n = kids:size() end)
@@ -2359,24 +2367,50 @@ function nav.muteGameEnter()
             if c then walk(c, depth + 1) end
         end
     end
-    for _, m in pairs(menus) do
-        if m.root and now - m.t <= MENU_FRESH_SECONDS then pcall(walk, m.root, 0) end
-    end
-    if #muted > 0 then
-        a11y_log("[nav] muted " .. #muted .. " Enter-mapped button(s)")
-        later(0.6, function()
-            for _, touch in ipairs(muted) do pcall(function() touch("enabled"):SetInt(1) end) end
-        end)
-    end
+    pcall(walk, root, 0)
 end
 
+function nav.muteGameEnter(skip)
+    local confirmKey = nil
+    pcall(function() confirmKey = tonumber(game.confirmButton()) end)
+    if not confirmKey or confirmKey == 0 then return end
+    local now, ids, count = clock(), {}, 0
+    local skipId = skip and tostring(skip)
+    for _, m in pairs(menus) do
+        if m.root and now - m.t < 0.1 then
+            eachEnterButton(m.root, confirmKey, function(el)
+                if tostring(el) == skipId then return end
+                pcall(function() el("buttonDown"):SetInt(0) end)
+                local touch = el["Touch"]
+                if touch("enabled"):GetInt() ~= 0 then
+                    touch("enabled"):SetInt(0)
+                    ids[tostring(el)] = true
+                    count = count + 1
+                end
+            end)
+        end
+    end
+    if count == 0 then return end
+    a11y_log("[nav] muted " .. count .. " Enter-mapped button(s)")
+    local t = now + MUTE_SECONDS
+    pending[#pending + 1] = { t = t, stop = t + 1.5, perRoot = true, done = {}, fn = function(root)
+        eachEnterButton(root, confirmKey, function(el)
+            if ids[tostring(el)] then
+                ids[tostring(el)] = nil
+                pcall(function() el["Touch"]("enabled"):SetInt(1) end)
+            end
+        end)
+    end }
+end
+end -- do (Enter muting)
+
 local function navActivate()
-    pcall(function() later(0, nav.muteGameEnter) end)   -- after the press below
     if vmenu.active then                        -- run the chosen list entry
         if vmenu.index < 1 then say("Press Tab to choose", true) return end
         local dest = vmenu.items[vmenu.index]
         vmenu.active = false
         if vmenu.kind == "places" then say("Opening " .. dest[1], false) end
+        pcall(nav.muteGameEnter)                -- before: the action may close screens
         pcall(dest[2])
         return
     end
@@ -2384,7 +2418,12 @@ local function navActivate()
     local el = nav.items[nav.index]
     if not el then say("Press Tab to choose", true) return end
     local label = nav.labels[nav.index] or "item"
-    if type(el) == "table" and el.virtual then pcall(el.virtual) return end
+    if type(el) == "table" and el.virtual then
+        pcall(nav.muteGameEnter)
+        pcall(el.virtual)
+        return
+    end
+    pcall(nav.muteGameEnter, el)                -- before the press, never after
     if pressElement(el) then say(label, false) else say("Could not activate " .. label, true) end
     -- Don't force an index reset here: navContext's key already changes (and
     -- resets focus) if a popup opened or the screen changed. If activation did

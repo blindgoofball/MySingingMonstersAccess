@@ -454,6 +454,22 @@ static int read_tutorial_step(int *step, int *maxstep)
     get_tut_mgr_fn fn = resolve_tut_getter();
     int ok = 0;
     if (!fn) return 0;
+    /* The getter does  mov eax,[global]; mov ecx,[eax+0x5C]; mov eax,[ecx+4].
+       Before the tutorial exists (login, loading) [eax+0x5C] is NULL and the
+       getter faults inside the exe. __try doesn't save us there: the game's
+       crash reporter sees the fault first and kills the process. So walk the
+       same two pointers here and only call when both are valid. */
+    {
+        const unsigned char *code = (const unsigned char *)fn;
+        void **global, *g, *sub;
+        if (IsBadReadPtr(code, 5) || code[0] != 0xA1) return 0;
+        global = *(void ***)(code + 1);
+        if (IsBadReadPtr(global, sizeof(void *))) return 0;
+        g = *global;
+        if (!g || IsBadReadPtr((char *)g + 0x5C, sizeof(void *))) return 0;
+        sub = *(void **)((char *)g + 0x5C);
+        if (!sub || IsBadReadPtr((char *)sub + 4, sizeof(int))) return 0;
+    }
     __try {
         void *mgr = fn();
         if (mgr && !IsBadReadPtr(mgr, 8)) {
