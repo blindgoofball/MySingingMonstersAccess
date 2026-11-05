@@ -1366,6 +1366,25 @@ local function tapSelected()
         if isMonster then game.selectMonster(id) else game.selectStructure(id) end
     end
     say("Tap " .. name, true)
+    -- Selected Nursery with a finished egg: hatch it the game's way first
+    -- (see activateObject); click only if that didn't take.
+    local ready = false
+    if name:lower():find("nursery", 1, true) then
+        pcall(function() ready = game.eggReadyToHatch() and true or false end)
+    end
+    if ready then
+        local hok, herr = pcall(function() game.hatchEgg() end)
+        if not hok and id and tostring(herr):find("args", 1, true) then
+            hok, herr = pcall(function() game.hatchEgg(id) end)
+        end
+        a11y_log("[hatch] (tap) hatchEgg -> " .. tostring(hok) .. " " .. tostring(herr))
+        later(0.8, function()
+            local still = false
+            pcall(function() still = game.eggReadyToHatch() and true or false end)
+            if still then tapEntity(obj, name, nil, nil, function() end) end
+        end)
+        return
+    end
     tapEntity(obj, name, key, id and reselect or nil, function(hit)
         if not hit then say("Something is in front of " .. name .. ". Could not tap it.", true) end
     end)
@@ -1380,6 +1399,39 @@ local function activateObject(entity, label, select, wantKey)
     later(0.2, function()
         local got = selectionKey()
         if selectionIs(wantKey, label) then
+            -- A Nursery whose egg is done hatches when tapped. The game does
+            -- that from C++ through game.hatchEgg (no Lua caller to copy, so
+            -- its arguments are unknown): try none, then the structure id. A
+            -- wrong argument count is a Lua error, which pcall catches. Only
+            -- with the Nursery selected, so the game has a Nursery to use.
+            local ready = false
+            if label:lower():find("nursery", 1, true) then
+                pcall(function() ready = game.eggReadyToHatch() and true or false end)
+            end
+            if ready then
+                local id = wantKey and tonumber(wantKey:match("^s(%d+)$"))
+                local hok, herr = pcall(function() game.hatchEgg() end)
+                if not hok and id and tostring(herr):find("args", 1, true) then
+                    a11y_log("[hatch] hatchEgg(): " .. tostring(herr) .. "; trying with the id")
+                    hok, herr = pcall(function() game.hatchEgg(id) end)
+                end
+                a11y_log("[hatch] hatchEgg -> " .. tostring(hok) .. " " .. tostring(herr))
+                later(0.8, function()
+                    local still = false
+                    pcall(function() still = game.eggReadyToHatch() and true or false end)
+                    a11y_log("[hatch] egg still ready afterwards: " .. tostring(still))
+                    if not still then return end
+                    -- Didn't hatch: tap the Nursery like a finger would.
+                    tapEntity(entity, label, nil, nil, function()
+                        later(0.6, function()
+                            local again = false
+                            pcall(function() again = game.eggReadyToHatch() and true or false end)
+                            if again then say("Could not hatch the egg. Try Tab, then Tap " .. label .. ".", true) end
+                        end)
+                    end)
+                end)
+                return
+            end
             say((selectedName() or label) .. " selected. Tab for actions.", true)
             return
         end
@@ -1389,7 +1441,9 @@ local function activateObject(entity, label, select, wantKey)
                 if selectionIs(wantKey, label) then
                     say((selectedName() or label) .. " selected. Tab for actions.", true)
                 elseif hit then
-                    say(label .. " tapped.", true)
+                    -- The click selected nothing; that's normal when the tap
+                    -- does its own thing (hatch, collect), but say so honestly.
+                    say("Clicked on " .. label .. ". If nothing happened, the click missed.", true)
                 else
                     say("Something is in front of " .. label .. ". Could not tap it.", true)
                 end
@@ -1602,6 +1656,11 @@ local function tutorialTarget()
     local text = tutorialBannerText()
     if not text then return nil end
     local lower = text:lower()
+    -- Buying happens in the Market, not on an island object ("Buy a Noggin
+    -- egg" used to match the "egg" rule and point at the Breeding Structure).
+    if lower:find("buy", 1, true) or lower:find("market", 1, true) or lower:find("purchase", 1, true) then
+        return { "Market", function() pcall(game.loadStoreContext) end, verb = "open" }
+    end
     local objs = islandObjects()
     for _, rule in ipairs(TUTORIAL_TARGETS) do
         if lower:find(rule[1], 1, true) then
@@ -2651,7 +2710,7 @@ local function tutHint(root, menu)
     if tutCanContinue(root, menu) then return " Control Shift Enter to continue." end
     local target = nil
     pcall(function() target = tutorialTarget() end)
-    if target then return " Control Shift Enter to tap " .. target[1] .. "." end
+    if target then return " Control Shift Enter to " .. (target.verb or "tap") .. " " .. target[1] .. "." end
     return ""
 end
 
