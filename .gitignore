@@ -1,0 +1,44 @@
+# Allow-list: only the mod's own source goes in the repo. Game files, the
+# decompiled scripts, Ghidra projects and build output stay local.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/LICENSE
+!/.github/
+
+# Mod (Lua + manifest). The menu overrides are generated from each player's
+# own game files at install time, so data/ is never committed.
+!/jeode/
+/jeode/*
+!/jeode/msm-a11y/
+/jeode/msm-a11y/*
+!/jeode/msm-a11y/init.lua
+!/jeode/msm-a11y/manifest.json
+
+# Installer and build scripts
+!/installer/
+!/scripts/
+/scripts/*
+!/scripts/Build-Jeode.bat
+!/scripts/Build-Prism.bat
+!/scripts/Build-MenuOverrides.ps1
+!/scripts/Make-Release.ps1
+
+# Native source used by Build-Jeode.bat
+!/native/
+/native/*
+!/native/jeode_a11y.c
+!/native/accessibility_bridge.c
+!/native/accessibility_bridge.h
+!/native/prism_api.h
+!/native/jeode/
+!/native/lua51/
+!/native/minhook/
+
+# Build leftovers anywhere
+*.obj
+*.lib
+*.exp
+*.pdb
+*.dll

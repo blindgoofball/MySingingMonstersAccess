@@ -1,0 +1,69 @@
+# Builds the mod on every version tag and publishes a player-ready zip.
+# Tag with a hyphen (v0.1.0-alpha) to publish it as a pre-release.
+# Run it by hand (Actions tab) to get the zip as a build artifact without releasing.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PRISM_TAG: v0.18.3
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 32-bit compiler, plus the CMake and Ninja bundled with Visual Studio.
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      # Prism only changes when PRISM_TAG does, so keep the built DLL between runs.
+      - name: Cache 32-bit Prism
+        id: prism-cache
+        uses: actions/cache@v4
+        with:
+          path: native/prism
+          key: prism-x86-${{ env.PRISM_TAG }}
+
+      - name: Build 32-bit Prism
+        if: steps.prism-cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: scripts\Build-Prism.bat
+
+      - name: Build a11y.dll
+        shell: cmd
+        run: scripts\Build-Jeode.bat
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "0.0.0-dev.${{ github.run_number }}" }
+          ./scripts/Make-Release.ps1 -Version $version
+          "VERSION=$($version.TrimStart('v'))" >> $env:GITHUB_ENV
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msm-a11y-${{ env.VERSION }}
+          path: release/*.zip
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ghArgs = @($tag, (Get-ChildItem release/*.zip).FullName,
+                      "--title", "My Singing Monsters Access $tag",
+                      "--notes-file", ".github/RELEASE_NOTES.md")
+          if ($tag -like "*-*") { $ghArgs += "--prerelease" }
+          gh release create @ghArgs
