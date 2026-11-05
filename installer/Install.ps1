@@ -18,9 +18,9 @@ $ErrorActionPreference = "Stop"
 $Here = $PSScriptRoot
 $Root = Split-Path -Parent $Here
 $ModSource = Join-Path $Root "mod\msm-a11y"
-$ExeName = "MySingingMonsters.exe"
 
-function Say([string]$text, [string]$color = "White") { Write-Host $text -ForegroundColor $color }
+. (Join-Path $Here "Common.ps1")
+
 function Fail([string]$text) {
     Say ""
     Say "INSTALL FAILED: $text" Red
@@ -32,44 +32,6 @@ function Ask([string]$question) {
     return $answer.Trim().ToLower().StartsWith("y")
 }
 
-# --- Find the game -----------------------------------------------------------
-function Get-SteamLibraries {
-    $libs = @()
-    $steamRoots = @()
-    foreach ($key in @("HKCU:\Software\Valve\Steam", "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam", "HKLM:\SOFTWARE\Valve\Steam")) {
-        try {
-            $item = Get-ItemProperty -Path $key -ErrorAction Stop
-            foreach ($name in @("SteamPath", "InstallPath")) {
-                if ($item.$name) { $steamRoots += ($item.$name -replace "/", "\") }
-            }
-        } catch {}
-    }
-    $steamRoots += "${env:ProgramFiles(x86)}\Steam", "$env:ProgramFiles\Steam"
-    foreach ($steam in ($steamRoots | Select-Object -Unique)) {
-        $libs += $steam
-        $vdf = Join-Path $steam "steamapps\libraryfolders.vdf"
-        if (Test-Path $vdf) {
-            $content = Get-Content $vdf -Raw
-            foreach ($m in [regex]::Matches($content, '"path"\s+"([^"]+)"')) {
-                $libs += ($m.Groups[1].Value -replace '\\\\', '\')
-            }
-        }
-    }
-    # Common spots for extra libraries on other drives.
-    foreach ($drive in (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
-        $libs += (Join-Path $drive.Root "SteamLibrary"), (Join-Path $drive.Root "Steam")
-    }
-    return $libs | Select-Object -Unique
-}
-
-function Find-Game {
-    foreach ($lib in Get-SteamLibraries) {
-        $p = Join-Path $lib "steamapps\common\My Singing Monsters"
-        if (Test-Path (Join-Path $p $ExeName)) { return $p }
-    }
-    return $null
-}
-
 Say "My Singing Monsters Access - installer" Cyan
 Say "==================================================" Cyan
 Say ""
@@ -78,26 +40,13 @@ if (-not (Test-Path (Join-Path $ModSource "a11y.dll"))) {
     Fail "the mod files are missing next to this installer (expected $ModSource). Extract the whole zip first, then run install.bat from the extracted folder."
 }
 
+$GamePath = Resolve-GamePath $GamePath
 if (-not $GamePath) {
-    Say "Looking for My Singing Monsters in your Steam libraries..."
-    $GamePath = Find-Game
-    if ($GamePath) {
-        Say "Found it: $GamePath" Green
-    } else {
-        Say "Could not find the game automatically." Yellow
-        Say "In Steam: right-click My Singing Monsters, Manage, Browse local files. Copy that folder's path from the address bar."
-        $GamePath = (Read-Host "Paste the game folder path and press Enter").Trim().Trim('"').Trim("'")
-    }
-}
-if (-not $GamePath -or -not (Test-Path (Join-Path $GamePath $ExeName))) {
-    Fail "$ExeName was not found in '$GamePath'. Run install.bat again and give the folder that contains $ExeName."
+    Fail "$ExeName was not found in that folder. Run install.bat again and give the folder that contains $ExeName."
 }
 
 # --- The game must be closed -------------------------------------------------
-while (Get-Process -Name "MySingingMonsters" -ErrorAction SilentlyContinue) {
-    Say "My Singing Monsters is running. Close the game, then press Enter to continue." Yellow
-    [void](Read-Host)
-}
+Wait-GameClosed
 
 # --- Jeode -------------------------------------------------------------------
 $jeodeDll = Join-Path $GamePath "jeode\libjeode.dll"

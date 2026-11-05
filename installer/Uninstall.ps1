@@ -9,29 +9,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ExeName = "MySingingMonsters.exe"
-
-function Say([string]$text, [string]$color = "White") { Write-Host $text -ForegroundColor $color }
+. (Join-Path $PSScriptRoot "Common.ps1")
 
 Say "My Singing Monsters Access - uninstaller" Cyan
 Say ""
 
+$GamePath = Resolve-GamePath $GamePath
 if (-not $GamePath) {
-    foreach ($lib in @("${env:ProgramFiles(x86)}\Steam") + ((Get-PSDrive -PSProvider FileSystem).Root | ForEach-Object { Join-Path $_ "SteamLibrary" })) {
-        $p = Join-Path $lib "steamapps\common\My Singing Monsters"
-        if (Test-Path (Join-Path $p $ExeName)) { $GamePath = $p; break }
-    }
-    if ($GamePath) { Say "Found the game: $GamePath" Green }
-    else { $GamePath = (Read-Host "Paste the game folder path (the one with $ExeName)").Trim().Trim('"') }
-}
-if (-not (Test-Path (Join-Path $GamePath $ExeName))) {
-    Say "$ExeName not found in '$GamePath'. Nothing was changed." Red
+    Say "$ExeName was not found in that folder. Nothing was changed." Red
     exit 1
 }
-while (Get-Process -Name "MySingingMonsters" -ErrorAction SilentlyContinue) {
-    Say "Close My Singing Monsters, then press Enter." Yellow
-    [void](Read-Host)
-}
+Wait-GameClosed
 
 $modDest = Join-Path $GamePath "mods\msm-a11y"
 if (Test-Path $modDest) {

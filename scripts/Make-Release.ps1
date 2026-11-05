@@ -37,8 +37,8 @@ $manifest.version = $Version
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText((Join-Path $modDest "manifest.json"), ($manifest | ConvertTo-Json -Depth 10), $utf8NoBom)
 
-Copy-Item (Join-Path $Root "installer\install.bat"), (Join-Path $Root "installer\uninstall.bat") $Stage
-Copy-Item (Join-Path $Root "installer\Install.ps1"), (Join-Path $Root "installer\Uninstall.ps1"), (Join-Path $Root "scripts\Build-MenuOverrides.ps1") $instDest
+Copy-Item (Join-Path $Root "installer\install.bat"), (Join-Path $Root "installer\update.bat"), (Join-Path $Root "installer\uninstall.bat") $Stage
+Copy-Item (Join-Path $Root "installer\Common.ps1"), (Join-Path $Root "installer\Install.ps1"), (Join-Path $Root "installer\Update.ps1"), (Join-Path $Root "installer\Uninstall.ps1"), (Join-Path $Root "scripts\Build-MenuOverrides.ps1") $instDest
 Copy-Item (Join-Path $Root "README.md") $Stage
 if (Test-Path (Join-Path $Root "LICENSE")) { Copy-Item (Join-Path $Root "LICENSE") $Stage }
 $prismLicense = Join-Path $Root "native\prism\PRISM-LICENSE.txt"

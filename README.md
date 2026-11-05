@@ -36,7 +36,16 @@ You do **not** need any programming tools. Everything is already built.
 6. When it says **INSTALLED**, press any key to close the window.
 7. Start My Singing Monsters from Steam as usual. While it loads you should hear "My Singing Monsters accessibility mod loaded via Jeode".
 
-The installer is safe to run more than once. Running it again is also how you **update** the mod (download the new zip, then run its `install.bat`) and how you **repair it after a game update**.
+The installer is safe to run more than once. Running it again is how you **repair the mod after a game update**.
+
+### Updating
+
+Run **`update.bat`** from the same folder you installed from. It checks GitHub for the newest version and, if there is one:
+
+- downloads it and copies it over that folder, so that folder's `install.bat` installs the new version from then on,
+- installs it into the game straight away.
+
+If you already have the newest version, it says so and changes nothing. (Downloading the new zip and running its `install.bat` also works.)
 
 ### If Windows or your antivirus complains
 
@@ -91,7 +100,7 @@ Please [open an issue](../../issues) and include:
 
 ## Uninstalling
 
-Run **`uninstall.bat`** from the extracted zip. It removes the mod and asks whether to remove Jeode as well (say no if you use other Jeode mods). To do it by hand, delete `My Singing Monsters\mods\msm-a11y`, and for Jeode also `winhttp.dll` and the `jeode` folder.
+Run **`uninstall.bat`** from the folder you installed from. It removes the mod and asks whether to remove Jeode as well (say no if you use other Jeode mods). To do it by hand, delete `My Singing Monsters\mods\msm-a11y`, and for Jeode also `winhttp.dll` and the `jeode` folder.
 
 ## How it works
 

@@ -8,6 +8,6 @@
 3. Run `install.bat` from the extracted folder and follow what it says. It installs the Jeode mod loader for you if needed.
 4. Start the game from Steam as usual.
 
-To update, do the same with the new zip. After a game update, run `install.bat` again.
+Already installed? Run `update.bat` from the folder you installed from and it fetches and installs the newest version. After a game update, run `install.bat` again.
 
 Full instructions, keys and troubleshooting are in the [README](https://github.com/tunmi13productions/MySingingMonstersAccess#readme). Please report problems in [Issues](https://github.com/tunmi13productions/MySingingMonstersAccess/issues) with your `My Singing Monsters\data\accessibility.log` attached.
