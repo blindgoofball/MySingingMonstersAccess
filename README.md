@@ -34,7 +34,7 @@ You do **not** need any programming tools. Everything is already built.
    - copy the mod into the game's `mods` folder,
    - build the mod's menu hooks from your own copy of the game.
 6. When it says **INSTALLED**, press any key to close the window.
-7. Start your screen reader, then start My Singing Monsters from Steam as usual. While it loads you should hear "My Singing Monsters accessibility mod loaded via Jeode".
+7. Start My Singing Monsters from Steam as usual. While it loads you should hear "My Singing Monsters accessibility mod loaded via Jeode".
 
 The installer is safe to run more than once. Running it again is also how you **update** the mod (download the new zip, then run its `install.bat`) and how you **repair it after a game update**.
 

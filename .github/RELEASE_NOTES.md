@@ -6,7 +6,7 @@
 1. Download `msm-a11y-<version>.zip` below and **extract the whole zip**.
 2. Close My Singing Monsters.
 3. Run `install.bat` from the extracted folder and follow what it says. It installs the Jeode mod loader for you if needed.
-4. Start your screen reader, then the game.
+4. Start the game from Steam as usual.
 
 To update, do the same with the new zip. After a game update, run `install.bat` again.
 
