@@ -10,4 +10,4 @@
 
 Already installed? Run `update.bat` from the folder you installed from and it fetches and installs the newest version. After a game update, run `install.bat` again.
 
-Full instructions, keys and troubleshooting are in the [README](https://github.com/tunmi13productions/MySingingMonstersAccess#readme). Please report problems in [Issues](https://github.com/tunmi13productions/MySingingMonstersAccess/issues) with your `My Singing Monsters\data\accessibility.log` attached.
+Full instructions, keys and troubleshooting are in the [README](https://github.com/tunmi13productions/MySingingMonstersAccess#readme). Found a problem? Run `debug.bat` from the same folder. It zips the logs onto your Desktop; attach that zip to a report in [Issues](https://github.com/tunmi13productions/MySingingMonstersAccess/issues).

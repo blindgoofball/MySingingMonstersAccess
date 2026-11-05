@@ -92,11 +92,12 @@ Only needed if `install.bat` doesn't work for you.
 
 ## Reporting a problem
 
-Please [open an issue](../../issues) and include:
+1. If a screen reads badly, press **Control+Shift+D** on that screen first. That snapshot is what makes it possible to label a screen.
+2. If the game crashed or froze, close it (or let it close) first.
+3. Run **`debug.bat`** from the folder you installed from. It puts a zip named `msm-access-debug-<date>.zip` on your Desktop and opens the Desktop with it selected. The zip holds the mod's log, Jeode's log, recent crash reports and a short summary of versions. Nothing is sent anywhere.
+4. [Open an issue](../../issues) and attach the zip. Say what you did, what you expected, and what happened instead.
 
-- what you did, what you expected, and what happened instead;
-- the log file `My Singing Monsters\data\accessibility.log`;
-- if a screen reads badly, press **Control+Shift+D** on that screen first, then send the log. That snapshot is what makes it possible to label a screen.
+The log includes text read from the game, such as your in-game name, friends' names and your friend code. If you'd rather not post that publicly, send the zip privately instead.
 
 ## Uninstalling
 
