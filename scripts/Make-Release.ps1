@@ -39,7 +39,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 Copy-Item (Join-Path $Root "installer\install.bat"), (Join-Path $Root "installer\update.bat"), (Join-Path $Root "installer\uninstall.bat"), (Join-Path $Root "installer\debug.bat") $Stage
 Copy-Item (Join-Path $Root "installer\Common.ps1"), (Join-Path $Root "installer\Install.ps1"), (Join-Path $Root "installer\Update.ps1"), (Join-Path $Root "installer\Uninstall.ps1"), (Join-Path $Root "installer\Collect-Logs.ps1"), (Join-Path $Root "scripts\Build-MenuOverrides.ps1") $instDest
-Copy-Item (Join-Path $Root "README.md") $Stage
+Copy-Item (Join-Path $Root "README.md"), (Join-Path $Root "CHANGELOG.md") $Stage
 if (Test-Path (Join-Path $Root "LICENSE")) { Copy-Item (Join-Path $Root "LICENSE") $Stage }
 $prismLicense = Join-Path $Root "native\prism\PRISM-LICENSE.txt"
 if (Test-Path $prismLicense) { Copy-Item $prismLicense (Join-Path $licDest "Prism-MPL-2.0.txt") }

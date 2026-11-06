@@ -47,6 +47,8 @@ Run **`update.bat`** from the same folder you installed from. It checks GitHub f
 
 If you already have the newest version, it says so and changes nothing. (Downloading the new zip and running its `install.bat` also works.)
 
+What changed in each version is in the [changelog](CHANGELOG.md), which is also in the zip.
+
 ### If Windows or your antivirus complains
 
 - **"Windows protected your PC" (SmartScreen):** choose "More info", then "Run anyway". The scripts are plain text you can open in Notepad and read.

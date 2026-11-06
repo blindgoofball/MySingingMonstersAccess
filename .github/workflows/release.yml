@@ -63,8 +63,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
+          # Notes: this version's CHANGELOG.md section (a "## <version>" heading),
+          # then the standard install text.
+          $version = $tag.TrimStart("v")
+          $section = @(); $inSection = $false
+          foreach ($line in Get-Content CHANGELOG.md) {
+              if ($line -match '^## ') {
+                  if ($inSection) { break }
+                  $inSection = $line -match ('^## ' + [regex]::Escape($version) + '(\s|$)')
+                  continue
+              }
+              if ($inSection) { $section += $line -replace '^###', '##' }
+          }
+          $notes = @()
+          if ($section) { $notes += "## What's new"; $notes += ""; $notes += $section; $notes += "" }
+          $notes += Get-Content .github/RELEASE_NOTES.md
+          Set-Content -Path release/notes.md -Value $notes -Encoding utf8
+          if (-not $section) { Write-Warning "CHANGELOG.md has no section for $version" }
           $ghArgs = @($tag, (Get-ChildItem release/*.zip).FullName,
                       "--title", "My Singing Monsters Access $tag",
-                      "--notes-file", ".github/RELEASE_NOTES.md")
+                      "--notes-file", "release/notes.md")
           $ghArgs += "--latest"
           gh release create @ghArgs
