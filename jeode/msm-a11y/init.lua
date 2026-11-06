@@ -3298,7 +3298,21 @@ end
 -- progress, filled in the way FillQuestDescription.lua does it.
 -- ---------------------------------------------------------------------------
 local READY_CHECKS = {
-    { "hasMonsterCollectReady",   "Monsters have coins to collect. Collect All is on the bar" },
+    -- Collect All only appears on the bar once the game unlocks it, and it
+    -- recharges after use (ContextBar.lua: collectAllUnlocked/Disabled).
+    { "hasMonsterCollectReady", function()
+        local base = "Monsters have coins to collect"
+        local ok, unlocked = pcall(function() return game.collectAllUnlocked() end)
+        if ok and unlocked then
+            local okd, off = pcall(function() return game.collectAllDisabled() end)
+            if okd and off then
+                local tt = nil; pcall(function() tt = cleanText(localize(game.collectAllTimerText()) or "") end)
+                return base .. ". Collect All on the bar is recharging" .. ((tt and tt ~= "") and (", " .. tt) or "")
+            end
+            return base .. ". Collect All is on the bar"
+        end
+        return base .. ". Collect All isn't unlocked yet, so collect from each monster: Control Shift O, pick a monster, press Enter"
+    end },
     { "hasBakeryReady",           "Bakery food is ready to collect" },
     { "hasBreedingReady",         "Breeding is finished" },
     { "hasNurseryReady",          "An egg in the Nursery is ready to hatch" },
@@ -3319,7 +3333,13 @@ local function readyList()
     if not isl then return out end
     for _, c in ipairs(READY_CHECKS) do
         local ok, v = pcall(function() return isl[c[1]](isl) end)
-        if ok and v then out[#out + 1] = c[2] end
+        if ok and v then
+            local text = c[2]
+            if type(text) == "function" then
+                local okt, t = pcall(text); text = okt and t or "Monsters have coins to collect"
+            end
+            out[#out + 1] = text
+        end
     end
     return out
 end
