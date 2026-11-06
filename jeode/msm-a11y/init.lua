@@ -1155,6 +1155,16 @@ function menuState.usable(m)
 end
 -- Call right before pressing, selecting or opening anything.
 function menuState.touch() menuState.activated = clock() end
+-- Did any screen open (or grow a new panel) at or after time t? Used to tell
+-- a tap that opened something from a tap on empty ground.
+function menuState.openedSince(t)
+    for _, m in pairs(menus) do
+        if ((m.appeared or -100) >= t or (m.opened or -100) >= t) and clock() - m.t <= MENU_FRESH_SECONDS then
+            return true
+        end
+    end
+    return false
+end
 
 -- Menus with their own announcer (tutorial hook) or that are always on screen.
 local function selfAnnounced(file)
@@ -1551,8 +1561,10 @@ end
 
 -- Points to try on the object, centred by the camera. Its anchor is at its
 -- base, so go up first; then sideways, for trees or rocks standing in front.
+-- The second point is the centre itself: on a 16:10 screen (1280x800) the
+-- tutorial Nursery's egg sits at 0.50 and 0.47 lands on the chain above it.
 local TAP_POINTS = {
-    { 0.5, 0.47 }, { 0.5, 0.40 }, { 0.5, 0.33 }, { 0.46, 0.42 }, { 0.54, 0.42 },
+    { 0.5, 0.47 }, { 0.5, 0.51 }, { 0.5, 0.40 }, { 0.5, 0.33 }, { 0.46, 0.42 }, { 0.54, 0.42 },
 }
 local TAP_CHECK_SECONDS = 0.45
 
@@ -1561,7 +1573,9 @@ local TAP_CHECK_SECONDS = 0.45
 -- and is what tutorial steps that block direct selection wait for.
 -- wantKey: the selectionKey the tap should leave (nil = don't check).
 -- reselect: puts our object back after a miss. done(hit): called at the end.
-local function tapEntity(entity, name, wantKey, reselect, done)
+-- untilSomething: also count a click that selected nothing and opened no
+-- screen as a miss (it hit empty ground), and try the next point.
+local function tapEntity(entity, name, wantKey, reselect, done, untilSomething)
     if not entity then say("Can't find " .. name, true) if done then done(false) end return end
     if type(clickFraction) ~= "function" then say("Click function unavailable", true) return end
     local ok, err = pcall(function() game.worldContext():zoomCameraToObject(entity, TAP_ZOOM, TAP_SECONDS) end)
@@ -1573,11 +1587,14 @@ local function tapEntity(entity, name, wantKey, reselect, done)
     end
     local function try(i)
         local pt = TAP_POINTS[i]
+        local clickedAt = clock()
         clickFraction(pt[1], pt[2])
         later(TAP_CHECK_SECONDS, function()
             local got = selectionKey()
-            -- A miss is something else getting selected (a tree in front).
+            -- A miss is something else getting selected (a tree in front),
+            -- or, when asked, nothing happening at all.
             local miss = selectionIs(wantKey, name) == false
+                or (untilSomething and got == nil and not menuState.openedSince(clickedAt))
             a11y_log("[tap] " .. name .. " point " .. i .. " -> " .. tostring(got) .. (miss and " (miss)" or ""))
             if miss and i < #TAP_POINTS then
                 if reselect then pcall(reselect) end
@@ -1672,10 +1689,10 @@ local function activateObject(entity, label, select, wantKey)
             return
         end
         a11y_log("[tap] direct select of " .. label .. " didn't take (" .. tostring(got) .. "), tapping")
-        local popupBefore = popupOpen()
+        local tapStart = clock()
         tapEntity(entity, label, wantKey, select, function(hit)
             later(0.15, function()
-                if hit and not popupBefore and popupOpen() then
+                if hit and menuState.openedSince(tapStart) then
                     -- The tap opened a screen (the hatching fanfare, a notice):
                     -- its own announcement says what happened; don't talk over it.
                     a11y_log("[tap] " .. label .. " opened a screen")
@@ -1686,10 +1703,10 @@ local function activateObject(entity, label, select, wantKey)
                     -- does its own thing (hatch, collect), but say so honestly.
                     say("Clicked on " .. label .. ". If nothing happened, the click missed.", true)
                 else
-                    say("Something is in front of " .. label .. ". Could not tap it.", true)
+                    say("Could not tap " .. label .. ". Something is in front of it, or nothing answered the click.", true)
                 end
             end)
-        end)
+        end, true)                              -- a click on empty ground: try the next spot
     end)
 end
 

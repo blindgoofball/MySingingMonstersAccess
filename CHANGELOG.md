@@ -6,6 +6,7 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ### Fixed
 
+- On some screen shapes (for example 1280 by 800), tapping the Nursery in the tutorial step "Place the Monster" did nothing: the mod clicked just above the egg. When a click selects nothing and opens nothing, the mod now tries the next spot on the object, starting with its centre, and stops as soon as something opens.
 - Hatching an egg opens a screen that says "The egg is ready! Click it to crack it open!", and the egg itself was not something you could Tab to. In the tutorial that screen has no other way out, so you were stuck. The egg is now an item: press Enter on it and the mod taps it until it cracks open, then Tab to Continue.
 - Tapping the Nursery (or anything that opens a screen when tapped) said "If nothing happened, the click missed" over the top of the screen that had just opened. It now lets that screen speak.
 
