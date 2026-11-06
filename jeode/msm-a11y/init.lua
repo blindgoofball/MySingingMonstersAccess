@@ -2568,10 +2568,13 @@ local function navMove(dir, edge)
         say(label .. ", " .. vmenu.index .. " of " .. n, true)
         return
     end
+    local t0 = clock()
     if not navEnsure() then                     -- nothing navigable
         if popupOpen() then say("Nothing to navigate in this dialog", true) end
         return
     end
+    local took = clock() - t0                   -- find screens that make Tab feel slow
+    if took > 0.03 then a11y_log(string.format("[nav] slow scan %.0f ms, %d items, %s", took * 1000, #nav.items, tostring(nav.key))) end
     local prev = nav.index
     nav.index = edge and (dir > 0 and #nav.items or 1) or (nav.index + dir)
     if nav.index > #nav.items then nav.index = 1 end

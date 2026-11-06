@@ -43,8 +43,15 @@ static const struct JeodeNativeAPI *g_api = NULL;
    --------------------------------------------------------------------------- */
 
 #define KEY_DOWN(vk)        (GetAsyncKeyState(vk) & 0x8000)
-#define HOTKEY_POLL_MS      30
+#define HOTKEY_POLL_MS      10
+/* Keys that act (Enter, Escape, arrows that drag, Ctrl+Shift commands) keep a
+   long debounce so a bounce can't press twice. Moving keys (Tab, Shift+Tab,
+   Home, End) only move focus, so fast typists get every press, and
+   holding Tab or Shift+Tab repeats like it does in Windows. */
 #define HOTKEY_DEBOUNCE_MS  250
+#define MOVE_DEBOUNCE_MS    40
+#define REPEAT_DELAY_MS     400
+#define REPEAT_EVERY_MS     90
 
 static HANDLE        g_hotkeyThread  = NULL;
 static volatile LONG g_hotkeyRunning = 0;
@@ -115,10 +122,11 @@ static unsigned __stdcall HotkeyProc(void *param)
 {
     int   prev[HK_COUNT];
     DWORD last[HK_COUNT];
+    DWORD since[HK_COUNT];
     int   i;
     (void)param;
 
-    for (i = 0; i < HK_COUNT; i++) { prev[i] = 0; last[i] = 0; }
+    for (i = 0; i < HK_COUNT; i++) { prev[i] = 0; last[i] = 0; since[i] = 0; }
 
     A11Y_Log("Hotkey thread started (Ctrl+Shift+A = HUD; Tab/Shift+Tab/Enter = nav)");
 
@@ -153,7 +161,19 @@ static unsigned __stdcall HotkeyProc(void *param)
         down[HK_END]       = !shift && !ctrl && KEY_DOWN(VK_END);
 
         for (i = 0; i < HK_COUNT; i++) {
-            if (down[i] && !prev[i] && (now - last[i]) >= HOTKEY_DEBOUNCE_MS) {
+            /* Brackets and comma/period drag the object while placing: not here. */
+            int moving = i == HK_NAV_NEXT || i == HK_NAV_PREV || i == HK_HOME || i == HK_END;
+            int repeats = i == HK_NAV_NEXT || i == HK_NAV_PREV;
+            DWORD debounce = moving ? MOVE_DEBOUNCE_MS : HOTKEY_DEBOUNCE_MS;
+            int fire = 0;
+            if (down[i] && !prev[i]) {
+                since[i] = now;
+                fire = (now - last[i]) >= debounce;
+            } else if (down[i] && repeats && (now - since[i]) >= REPEAT_DELAY_MS &&
+                       (now - last[i]) >= REPEAT_EVERY_MS) {
+                fire = 1;
+            }
+            if (fire) {
                 last[i] = now;
                 if (game_is_foreground() && g_api && g_api->is_lua_ready()) {
                     if (i == HK_HUD) A11Y_Log("Ctrl+Shift+A -> HUD announce");
