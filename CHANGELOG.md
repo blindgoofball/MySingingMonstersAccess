@@ -4,6 +4,10 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.5-alpha - 2026-11-05
+
 ### Fixed
 
 - On the main screen, Tab often went silent or skipped things (since 0.1.4-alpha). The new Encore button label hit an error that stopped the whole list. The Encore event screen's points line had the same error.
