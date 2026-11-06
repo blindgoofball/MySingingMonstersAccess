@@ -4,7 +4,9 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+
+- The Goals screen said "Nothing to navigate" (the game changed how goals are built in 5.7.4). Every goal now has a "Show me" item that says the goal, its progress and its reward, and Collect buttons say which goal and what you get, for example "Collect: Breed a Fwog and Potbelly together. Reward: 50 coins".
 
 ## 0.1.5-alpha - 2026-11-05
 

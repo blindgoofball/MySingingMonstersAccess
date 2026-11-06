@@ -595,6 +595,9 @@ local function socialLabel(el, name)
         local island = elementText(findNamed(p, "IslandName", 1))
         return (elementText(el) or "Go") .. (island and (", travel to " .. island) or ""), true
     end
+    -- Goal rows (named by goal id): the arrow that shows where to do it. Not
+    -- final: the goal's text and rewards are added after.
+    if name == "HelpArrow" and pn and pn:find("^%d+$") then return "Show me", false end
     -- HUD Encore button: the event's points and time left.
     if name == "EncoreBar" then
         local parts = { "Encore event" }
@@ -750,11 +753,31 @@ local REWARD_WORDS = {
     { "RewardRelics", "relics" }, { "RewardStarpower", "starpower" }, { "RewardEntity", nil },
 }
 
+-- The goal's text: a GoalDesc text component on the row itself (5.7.4), or
+-- a GoalDesc child element (older versions).
+FRIENDLY.__goalDesc = function(row)
+    local v = nil
+    pcall(function() v = row:C("GoalDesc")("text"):GetString() end)
+    if v and v ~= "" then
+        v = cleanText(localize(v) or v)
+        if v and v ~= "" then return v end
+    end
+    local descEl = findNamed(row, "GoalDesc", 1)
+    local desc = elementText(descEl)
+    if not desc and descEl then
+        local parts = descendantText(descEl, 0)
+        if #parts > 0 then desc = table.concat(parts, " ") end
+    end
+    return desc
+end
+
+-- The goal row holding el: a child of GoalEntries (rows are named by goal id).
 local function goalRow(el)
     local cur = el
     for _ = 1, 4 do
         local p = nil; pcall(function() p = cur:parent() end)
         if not p or p == cur then return nil end
+        if elementName(p) == "GoalEntries" then return cur end
         cur = p
         if findNamed(cur, "GoalDesc", 1) then return cur end
     end
@@ -767,6 +790,7 @@ local function goalRewards(row)
         local e = findNamed(row, "rewardEntry" .. r[1], 6)
         if e then
             local amount = nil; pcall(function() amount = e("RewardAmount"):GetString() end)
+            if not amount or amount == "" then amount = elementText(e) end
             if r[2] then
                 if amount and amount ~= "" then parts[#parts + 1] = amount .. " " .. r[2] end
             else
@@ -785,14 +809,17 @@ end
 local function withGoalContext(el, label)
     local row = goalRow(el)
     if not row then return label end
-    local descEl = findNamed(row, "GoalDesc", 1)
-    local desc = elementText(descEl)
-    if not desc then
-        local parts = descendantText(descEl, 0)
-        if #parts > 0 then desc = table.concat(parts, " ") end
-    end
+    local desc = FRIENDLY.__goalDesc(row)
     local out = label
     if desc and not label:find(desc, 1, true) then out = out .. ": " .. desc end
+    -- Progress ("2/5") under the Collect spot, while the goal isn't done.
+    local prog = findNamed(row, "Progress", 1)
+    if prog and isVisible(prog) then
+        local t = nil
+        pcall(function() t = prog:C("Label")("text"):GetString() end)
+        t = t and cleanText(t)
+        if t and t ~= "" then out = out .. ". Progress " .. t end
+    end
     local rewards = goalRewards(row)
     if #rewards > 0 then out = out .. ". Reward: " .. table.concat(rewards, ", ") end
     return out
