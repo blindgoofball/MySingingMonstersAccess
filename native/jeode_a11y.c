@@ -883,8 +883,8 @@ static int JEODE_CALL j_a11y_touch(void *L)
     msg = phase == 1 ? 0x201 : phase == 0 ? 0x202 : 0x200;
     wp  = phase == 1 ? MK_LBUTTON : 0;
     call_mouse_handler(g_mouseFn, msg, wp, lp);
-    A11Y_Log("touch: %s at (%.2f,%.2f) -> engine window (%d,%d)",
-             phase == 1 ? "down" : phase == 0 ? "up" : "move", fx, fy, x, y);
+    A11Y_Log("touch: %s at %d%%,%d%% -> engine window (%d,%d)",
+             phase == 1 ? "down" : phase == 0 ? "up" : "move", (int)(fx * 100), (int)(fy * 100), x, y);
     lua_pushboolean(ls, 1);
     return 1;
 }
