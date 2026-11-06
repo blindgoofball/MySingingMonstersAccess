@@ -638,6 +638,11 @@ local function socialLabel(el, name)
     local MAP_ALERTS = { SeasonalAlertButton = "Seasonal event", SaleAlertButton = "Sale",
                          NotificationAlertButton = "Notifications" }
     if MAP_ALERTS[name] then return MAP_ALERTS[name], true end
+    -- Hatching fanfare: "The egg is ready! Click it to crack it open!" The egg
+    -- needs 7 taps (MonsterHatchFanfare.lua NUM_CRACK_TAPS); Enter taps it
+    -- until it opens (nav.crackEgg). In the tutorial there may be no Skip
+    -- button, so this is the way on.
+    if name == "EggImage" then return "Egg, press Enter to crack it open", true end
     -- The full-screen "Click to continue" area (rewards, card packs, the new
     -- island fanfare), shown only while that caption is showing.
     if (name == "Fade" or name == "TouchBlocker") and p then
@@ -1667,9 +1672,14 @@ local function activateObject(entity, label, select, wantKey)
             return
         end
         a11y_log("[tap] direct select of " .. label .. " didn't take (" .. tostring(got) .. "), tapping")
+        local popupBefore = popupOpen()
         tapEntity(entity, label, wantKey, select, function(hit)
             later(0.15, function()
-                if selectionIs(wantKey, label) then
+                if hit and not popupBefore and popupOpen() then
+                    -- The tap opened a screen (the hatching fanfare, a notice):
+                    -- its own announcement says what happened; don't talk over it.
+                    a11y_log("[tap] " .. label .. " opened a screen")
+                elseif selectionIs(wantKey, label) then
                     say((selectedName() or label) .. " selected. Tab for actions.", true)
                 elseif hit then
                     -- The click selected nothing; that's normal when the tap
@@ -2743,6 +2753,21 @@ end
 
 -- After picking an island on the Map: its details (Main/IslandName and
 -- IslandInfo: collected counts, cost, requirements), then focus on GO.
+-- Keep tapping the hatching fanfare's egg until it cracks (7 taps in all).
+-- Each tap finds the egg afresh: no handle is kept across frames.
+function nav.crackEgg(n)
+    later(0.25, function()
+        local root = liveMenu("popup_hatch_monster_fanfare")
+        local egg = root and findNamed(root, "EggImage", 4)
+        if not egg or not isClickable(egg) or n > 9 then
+            if n > 1 then say("The egg cracked open. Tab for Continue when it appears.", true) end
+            return
+        end
+        pressElement(egg)
+        nav.crackEgg(n + 1)
+    end)
+end
+
 function nav.mapInfo()
     local root = liveMenu("map_base")
     local main = root and findNamed(root, "Main", 3)
@@ -2808,6 +2833,10 @@ local function navActivate()
     local breedRow = (nav.groups[nav.index] or ""):find("^Monster %d list$") and (elementName(el) or ""):find("^entry%d")
     local isle = false
     pcall(function() isle = (elementName(el) or ""):find("^entry%d") ~= nil and el:parent():name() == "IslandList" end)
+    if elementName(el) == "EggImage" then
+        if pressElement(el) then say("Cracking the egg", true); nav.crackEgg(2) end
+        return
+    end
     if pressElement(el) then say(label, false) else say("Could not activate " .. label, true) end
     if breedRow then later(0.4, nav.breedingStatus) end
     if isle then later(0.5, nav.mapInfo) end

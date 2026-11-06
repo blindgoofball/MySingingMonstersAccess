@@ -2,6 +2,13 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## Unreleased
+
+### Fixed
+
+- Hatching an egg opens a screen that says "The egg is ready! Click it to crack it open!", and the egg itself was not something you could Tab to. In the tutorial that screen has no other way out, so you were stuck. The egg is now an item: press Enter on it and the mod taps it until it cracks open, then Tab to Continue.
+- Tapping the Nursery (or anything that opens a screen when tapped) said "If nothing happened, the click missed" over the top of the screen that had just opened. It now lets that screen speak.
+
 ## 0.1.6-alpha - 2026-11-06
 
 ### Added
