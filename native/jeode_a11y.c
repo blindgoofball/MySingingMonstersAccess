@@ -64,7 +64,7 @@ static int game_is_foreground(void)
    jeode.registerGlobal) and runs on the game thread through queue_lua -- a safe
    frame boundary. Nav handlers are silent when no real popup is open, so plain
    Tab/Enter during normal play are harmless no-ops. */
-enum { HK_HUD = 0, HK_NAV_NEXT, HK_NAV_PREV, HK_ACTIVATE, HK_MENU, HK_TUTORIAL, HK_TUTSTEP, HK_DUMP, HK_OBJECTS, HK_LEFT, HK_RIGHT, HK_UP, HK_DOWN, HK_WHATNOW, HK_ESCAPE, HK_BACKSPACE, HK_POI_PREV, HK_POI_NEXT, HK_SPOT_PREV, HK_SPOT_NEXT, HK_COUNT };
+enum { HK_HUD = 0, HK_NAV_NEXT, HK_NAV_PREV, HK_ACTIVATE, HK_MENU, HK_TUTORIAL, HK_TUTSTEP, HK_DUMP, HK_OBJECTS, HK_LEFT, HK_RIGHT, HK_UP, HK_DOWN, HK_WHATNOW, HK_ESCAPE, HK_BACKSPACE, HK_POI_PREV, HK_POI_NEXT, HK_SPOT_PREV, HK_SPOT_NEXT, HK_CAMERA, HK_COUNT };
 
 static const char *const g_hkLua[HK_COUNT] = {
     /* HK_HUD (Ctrl+Shift+A) */
@@ -104,6 +104,8 @@ static const char *const g_hkLua[HK_COUNT] = {
     /* HK_SPOT_PREV / HK_SPOT_NEXT (comma, period) -- next free spot near the chosen object */
     "if type(a11y_spot)=='function' then a11y_spot(-1) end",
     "if type(a11y_spot)=='function' then a11y_spot(1) end",
+    /* HK_CAMERA (Ctrl+Shift+C) -- put the camera back on the island's default view */
+    "if type(a11y_camera)=='function' then a11y_camera() end",
 };
 
 static unsigned __stdcall HotkeyProc(void *param)
@@ -143,6 +145,7 @@ static unsigned __stdcall HotkeyProc(void *param)
         down[HK_POI_NEXT]  = !shift && !ctrl && KEY_DOWN(VK_OEM_6);
         down[HK_SPOT_PREV] = !shift && !ctrl && KEY_DOWN(VK_OEM_COMMA);
         down[HK_SPOT_NEXT] = !shift && !ctrl && KEY_DOWN(VK_OEM_PERIOD);
+        down[HK_CAMERA]    = ctrl && shift && KEY_DOWN('C');
 
         for (i = 0; i < HK_COUNT; i++) {
             if (down[i] && !prev[i] && (now - last[i]) >= HOTKEY_DEBOUNCE_MS) {

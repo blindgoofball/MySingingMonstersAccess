@@ -4,6 +4,10 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ## Unreleased
 
+### Added
+
+- Control+Shift+C puts the camera back on the whole island, the same view the game uses after a new island's fanfare.
+
 ### Improved
 
 - The countdown button at the bottom of the main screen (for example "1d 20h") is a limited-time shop offer. It now says "Offer", with the offer's name when the game provides one, and the time left.

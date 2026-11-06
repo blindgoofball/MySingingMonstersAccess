@@ -3753,6 +3753,18 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
     jeode.registerGlobal("a11y_whatnow", whatNow)
     jeode.registerGlobal("a11y_back", goBack)
     jeode.registerGlobal("a11y_spot", function(dir) spotStep(dir) end)
+    -- Control Shift C: the game's own default island view (what it uses after
+    -- the island fanfare). Placing re-centres on the object at the next arrow.
+    jeode.registerGlobal("a11y_camera", function()
+        local ok, err = pcall(function() game.setDefaultCameraSettings() end)
+        if not ok then
+            a11y_log("[camera] setDefaultCameraSettings failed: " .. tostring(err))
+            say("Can't reset the camera here", true)
+            return
+        end
+        placeAt.t = -100
+        say("Camera reset to the whole island", true)
+    end)
     jeode.registerGlobal("a11y_poi", function(dir)
         if placing() then poiStep(dir) else navGroupJump(dir) end
     end)

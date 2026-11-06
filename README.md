@@ -88,6 +88,7 @@ Only needed if `install.bat` doesn't work for you.
 | Control+Shift+W | What now: things that are ready and your current goals. |
 | Control+Shift+M | Places: Market, Book of Monsters, Map, Goals, Friends, Mail, Options. |
 | Control+Shift+O | A list of everything on your island. |
+| Control+Shift+C | Put the camera back on the whole island (the game's default view). |
 | Control+Shift+T | Repeat the current tutorial step. |
 | Control+Shift+Enter | Continue the tutorial. |
 | Control+Shift+D | Write a diagnostic snapshot of the current screen to the log (for bug reports). |
