@@ -585,8 +585,20 @@ local function socialLabel(el, name)
     if sprite == "button_hide_hud" then return "Hide menus (view mode)", true end
     local p = parentOf(el)
     local pn = p and elementName(p)
-    -- The full-screen "Click to continue" area (rewards, card packs).
-    if name == "Fade" and p then
+    -- Map: the selected island's arrows and GO; the alert buttons at the top.
+    if (name == "LeftButton" or name == "RightButton") and pn == "Main" then
+        return name == "LeftButton" and "Previous island" or "Next island", true
+    end
+    if name == "ActivateButton" and pn == "Main" then
+        local island = elementText(findNamed(p, "IslandName", 1))
+        return (elementText(el) or "Go") .. (island and (", travel to " .. island) or ""), true
+    end
+    local MAP_ALERTS = { SeasonalAlertButton = "Seasonal event", SaleAlertButton = "Sale",
+                         NotificationAlertButton = "Notifications" }
+    if MAP_ALERTS[name] then return MAP_ALERTS[name], true end
+    -- The full-screen "Click to continue" area (rewards, card packs, the new
+    -- island fanfare), shown only while that caption is showing.
+    if (name == "Fade" or name == "TouchBlocker") and p then
         for _, t in ipairs(descendantText(p, 0)) do
             if t:lower():find("continue") then return "Continue", true end
         end
@@ -2602,6 +2614,47 @@ function nav.breedingStatus()
     end
 end
 
+-- After picking an island on the Map: its details (Main/IslandName and
+-- IslandInfo: collected counts, cost, requirements), then focus on GO.
+function nav.mapInfo()
+    local root = liveMenu("map_base")
+    local main = root and findNamed(root, "Main", 3)
+    if not main or not isVisible(main) then return end
+    local parts = { elementText(findNamed(main, "IslandName", 1)) or "Island" }
+    local budget = 200
+    local function walk(el, depth)
+        if depth > 4 or budget <= 0 then return end
+        local kids = nil; pcall(function() kids = el:elements() end)
+        local n = 0; pcall(function() n = kids:size() end)
+        for i = 0, n - 1 do
+            budget = budget - 1
+            local c = nil; pcall(function() c = kids[i] end)
+            if c and isVisible(c) then
+                local nm = elementName(c) or ""
+                local t = elementText(c)
+                if t and t ~= "?" and not t:find("^[%p%s]*$") then
+                    local rarity = nm:match("^Collected(%u%l+)$")
+                    parts[#parts + 1] = rarity and (rarity .. " " .. t) or t
+                end
+                walk(c, depth + 1)
+            end
+        end
+    end
+    walk(findNamed(main, "IslandInfo", 1), 0)
+    -- Put focus on GO, so Enter travels there.
+    local hint = ""
+    if navEnsure() then
+        for i, l in ipairs(nav.labels) do
+            if elementName(nav.items[i]) == "ActivateButton" then
+                nav.index = i
+                hint = " " .. l .. " is focused: press Enter to go, or Tab to look around."
+                break
+            end
+        end
+    end
+    say(table.concat(parts, ", ") .. "." .. hint, true)
+end
+
 local function navActivate()
     if vmenu.active then                        -- run the chosen list entry
         if vmenu.index < 1 then say("Press Tab to choose", true) return end
@@ -2624,9 +2677,13 @@ local function navActivate()
         return
     end
     pcall(nav.muteGameEnter, el)                -- before the press, never after
+    -- Decide follow-ups before the press: never touch el after it.
     local breedRow = (nav.groups[nav.index] or ""):find("^Monster %d list$") and (elementName(el) or ""):find("^entry%d")
+    local isle = false
+    pcall(function() isle = (elementName(el) or ""):find("^entry%d") ~= nil and el:parent():name() == "IslandList" end)
     if pressElement(el) then say(label, false) else say("Could not activate " .. label, true) end
     if breedRow then later(0.4, nav.breedingStatus) end
+    if isle then later(0.5, nav.mapInfo) end
     -- Don't force an index reset here: navContext's key already changes (and
     -- resets focus) if a popup opened or the screen changed. If activation did
     -- nothing to the screen, keep the user's place in the list.
@@ -3477,7 +3534,7 @@ local function dumpUI()
         end
         if menuState.usable(m) and file ~= "hud" then
             a11y_log("-- LIVE MENU TREE (" .. file .. ", root " .. tostring(m.rootName) .. ") --")
-            dumpElement(m.root, 0, { n = 400 })
+            dumpElement(m.root, 0, { n = 2000 })
         end
     end
 

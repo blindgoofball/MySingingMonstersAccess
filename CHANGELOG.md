@@ -7,6 +7,12 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 ### Fixed
 
 - The Map showed only Close and Help most of the time (since 0.1.3-alpha): the islands are back. The crash fix in 0.1.3-alpha expected every screen to refresh every frame, and the map doesn't.
+- The "Welcome to" screen after getting a new island had no way to continue. It now has a Continue item, and Escape continues too.
+
+### Improved
+
+- Map: picking an island reads its details (cost, requirements, what you have collected) and puts focus on GO, so Enter travels there.
+- Map: the arrow buttons are called Previous island and Next island, GO says which island it goes to, and the alert buttons at the top have proper names instead of "SeasonalAlert".
 
 ## 0.1.3-alpha - 2026-11-05
 
