@@ -6,7 +6,7 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ### Added
 
-- Fast Tab presses are no longer dropped (before, presses less than a quarter of a second apart were ignored), and holding Tab or Shift+Tab moves through the list repeatedly. Enter, Escape and the other keys keep their protection against double presses.
+- Fast Tab presses are no longer dropped (before, presses less than a quarter of a second apart were ignored), and holding Tab or Shift+Tab moves through the list repeatedly. Enter, Escape and the other keys keep a short gap between presses on purpose: they change things in the game (buying, closing screens, dragging an object), so a press counted twice could buy something twice, close the screen underneath, or drop an object in the wrong spot. Tab, Shift+Tab, Home and End only move your focus, so a doubled press is harmless.
 - Home and End jump to the first and last item of a list or screen, including the Places and island object lists.
 - Control+Shift+C puts the camera back on the whole island, the same view the game uses after a new island's fanfare.
 
