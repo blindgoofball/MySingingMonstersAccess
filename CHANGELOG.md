@@ -4,6 +4,10 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ## Unreleased
 
+### Improved
+
+- The countdown button at the bottom of the main screen (for example "1d 20h") is a limited-time shop offer. It now says "Offer", with the offer's name when the game provides one, and the time left.
+
 ### Fixed
 
 - The Goals screen said "Nothing to navigate" (the game changed how goals are built in 5.7.4). Every goal now has a "Show me" item that says the goal, its progress and its reward, and Collect buttons say which goal and what you get, for example "Collect: Breed a Fwog and Potbelly together. Reward: 50 coins".

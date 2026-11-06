@@ -595,6 +595,33 @@ local function socialLabel(el, name)
         local island = elementText(findNamed(p, "IslandName", 1))
         return (elementText(el) or "Go") .. (island and (", travel to " .. island) or ""), true
     end
+    -- Promo tray (PromoCenterItem_<id>): a picture plus a countdown. Name the
+    -- offer from its promo data (PromoCenter.lua's DebugPrintAllPromoInfo fields).
+    if name == "Button" and pn and pn:find("^PromoCenterItem_") then
+        local parts = {}
+        local promo = nil; pcall(function() promo = p.promo end)
+        local function field(k)
+            local v = nil
+            pcall(function() v = promo[k] end)
+            if type(v) ~= "string" or v == "" then return nil end
+            v = cleanText(localize(v) or v)
+            return (v and v ~= "") and v or nil
+        end
+        local title = field("storeItemTitle") or field("storeItemName")
+        if not title then
+            -- Offers shown as an ad: the ad's own title.
+            pcall(function()
+                local ad = game.nativePlacement(promo.placement):getAd(0)
+                title = cleanText(ad:getTitle())
+            end)
+        end
+        parts[1] = "Offer" .. (title and title ~= "" and (": " .. title) or "")
+        local disc = field("discountText")
+        if disc then parts[#parts + 1] = disc end
+        local left = elementText(el)
+        if left then parts[#parts + 1] = left .. " left" end
+        return table.concat(parts, ", "), true
+    end
     -- Goal rows (named by goal id): the arrow that shows where to do it. Not
     -- final: the goal's text and rewards are added after.
     if name == "HelpArrow" and pn and pn:find("^%d+$") then return "Show me", false end
