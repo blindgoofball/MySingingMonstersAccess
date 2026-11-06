@@ -516,8 +516,60 @@ local function bookEntry(e)
     if filtered then parts[#parts + 1] = "filtered out" end
     return table.concat(parts, ", ")
 end
+-- "You received:" (popup_store_bundle_rewards): Contents/entryN/NameFrame.
+local function rewardList(root)
+    local out = {}
+    local contents = root and findNamed(root, "Contents", 5)
+    local kids = nil; pcall(function() kids = contents:elements() end)
+    local n = 0; pcall(function() n = kids:size() end)
+    for i = 0, n - 1 do
+        local c = nil; pcall(function() c = kids[i] end)
+        local t = c and elementText(findNamed(c, "NameFrame", 1))
+        if t then out[#out + 1] = t end
+    end
+    return out
+end
+-- Breeding (breeding_v2): two lists, LeftMonsterSelect ("Monster 1") and
+-- RightMonsterSelect ("Monster 2"), of List/entryN rows. A picked row's Bg
+-- turns yellow (BreedingMonsterListEntry.SetSelected).
+local BREED_SIDES = { LeftMonsterSelect = "Monster 1", RightMonsterSelect = "Monster 2" }
+local BREED_OTHER = { LeftMonsterSelect = "RightMonsterSelect", RightMonsterSelect = "LeftMonsterSelect" }
+local function breedSideOf(el)
+    local cur = el
+    for _ = 1, 3 do
+        cur = parentOf(cur)
+        local nm = cur and elementName(cur)
+        if nm and BREED_SIDES[nm] then return cur, nm end
+    end
+    return nil
+end
+local function breedSelected(entry)
+    local s = ""
+    pcall(function() s = findNamed(entry, "Bg", 1):C("Sprite")("spriteName"):GetString() end)
+    return tostring(s):find("yellow") ~= nil
+end
+local function breedName(entry)
+    return elementText(findNamed(entry, "MonsterName", 1)) or elementText(findNamed(entry, "MonsterSpecies", 1))
+end
+-- The picked monster's name in one side's list, if any.
+local function breedPick(side)
+    local list = side and findNamed(side, "List", 1)
+    local kids = nil; pcall(function() kids = list:elements() end)
+    local n = 0; pcall(function() n = kids:size() end)
+    for i = 0, n - 1 do
+        local c = nil; pcall(function() c = kids[i] end)
+        if c and isVisible(c) and breedSelected(c) then return breedName(c) or "a monster" end
+    end
+    return nil
+end
+-- Both picks on the breeding screen: monster 1, monster 2 (either may be nil).
+local function breedPicks(root)
+    local l, r = findNamed(root, "LeftMonsterSelect", 4), findNamed(root, "RightMonsterSelect", 4)
+    return breedPick(l), breedPick(r), findNamed(root, "HeartButton", 4)
+end
 FRIENDLY.__social = { cardShown = cardShown, cardSummary = cardSummary, mailMessage = mailMessage,
-                      bookEntry = bookEntry }
+                      bookEntry = bookEntry, rewardList = rewardList, breedPicks = breedPicks,
+                      BREED_SIDES = BREED_SIDES }
 
 local function socialLabel(el, name)
     if not name then return nil end
@@ -533,6 +585,31 @@ local function socialLabel(el, name)
     if sprite == "button_hide_hud" then return "Hide menus (view mode)", true end
     local p = parentOf(el)
     local pn = p and elementName(p)
+    -- The full-screen "Click to continue" area (rewards, card packs).
+    if name == "Fade" and p then
+        for _, t in ipairs(descendantText(p, 0)) do
+            if t:lower():find("continue") then return "Continue", true end
+        end
+    end
+    -- Breeding list rows: name, species, whether picked, and who they'd breed with.
+    if name:find("^entry%d+$") and pn == "List" then
+        local side, sideName = breedSideOf(el)
+        if side then
+            local parts = { breedName(el) or "Monster" }
+            local species = elementText(findNamed(el, "MonsterSpecies", 1))
+            if species and species ~= parts[1] then parts[#parts + 1] = species end
+            local feed = findNamed(el, "feed_overlay", 1)
+            local need = feed and isVisible(feed) and elementText(feed)
+            if need then parts[#parts + 1] = need end
+            if breedSelected(el) then
+                parts[#parts + 1] = "selected"
+            else
+                local other = breedPick(findNamed(parentOf(side), BREED_OTHER[sideName], 1))
+                if other then parts[#parts + 1] = "breed with " .. other end
+            end
+            return table.concat(parts, ", "), true
+        end
+    end
     -- Inbox rows (template_mailentry / template_newsentry): title and sender
     -- live in the row's vars.
     if name == "ViewButton" and pn and pn:find("^mail_%d") then
@@ -756,7 +833,7 @@ end
 
 local MAX_NAV_DEPTH = 10
 local MAX_NAV_ITEMS = 120
-local function collectControls(root, out, depth)
+local function collectControls(root, out, depth, group)
     if not root or depth > MAX_NAV_DEPTH or #out >= MAX_NAV_ITEMS then return end
     local kids = nil
     pcall(function() kids = root:elements() end)
@@ -816,9 +893,12 @@ local function collectControls(root, out, depth)
                     lbl = withGoalContext(child, lbl)
                     if lbl == before then lbl = withRowContext(child, lbl) end
                 end
-                if lbl and lbl:find("%w") then out[#out + 1] = { el = child, label = lbl } end
+                if lbl and lbl:find("%w") then out[#out + 1] = { el = child, label = lbl, group = group } end
             end
-            collectControls(child, out, depth + 1)   -- recurse into containers too
+            -- Named lists (breeding's Monster 1 / Monster 2): announced on entry,
+            -- and [ / ] jump between them.
+            local side = social and cname and social.BREED_SIDES[cname]
+            collectControls(child, out, depth + 1, side and (side .. " list") or group)   -- recurse into containers too
         end
     end
 end
@@ -827,9 +907,9 @@ end
 local function scanClickables(root)
     local out = {}
     if root then collectControls(root, out, 0) end
-    local items, labels = {}, {}
-    for i, rec in ipairs(out) do items[i] = rec.el; labels[i] = rec.label end
-    return items, labels
+    local items, labels, groups = {}, {}, {}
+    for i, rec in ipairs(out) do items[i] = rec.el; labels[i] = rec.label; groups[i] = rec.group or false end
+    return items, labels, groups
 end
 
 -- Screens whose message is not in their element tree.
@@ -1153,6 +1233,19 @@ local function liveMenu(name)
     for _, mm in pairs(menus) do
         if mm.rootName == name and menuState.usable(mm) then return mm.root end
     end
+    return nil
+end
+
+-- "You received:": read the rewards. They can still be filling in when the
+-- popup is pushed; then speak them once they show.
+POPUP_READERS.popup_store_bundle_rewards = function(popup)
+    local items = FRIENDLY.__social.rewardList(popup)
+    if #items > 0 then return "You received: " .. table.concat(items, ", ") end
+    later(0.8, function()
+        local r = liveMenu("popup_store_bundle_rewards")
+        local it = r and FRIENDLY.__social.rewardList(r) or {}
+        if #it > 0 then say("You received: " .. table.concat(it, ", ") .. ".", false) end
+    end)
     return nil
 end
 
@@ -2266,11 +2359,11 @@ local function navEnsure()
     local roots, key, virtual = navContext()
     nav.items, nav.labels, nav.groups = {}, {}, {}
     for _, r in ipairs(roots) do
-        local items, labels = scanClickables(r)
+        local items, labels, groups = scanClickables(r)
         for i = 1, #items do
             nav.items[#nav.items + 1] = items[i]
             nav.labels[#nav.labels + 1] = labels[i]
-            nav.groups[#nav.groups + 1] = "Buttons"
+            nav.groups[#nav.groups + 1] = groups[i] or "Buttons"
         end
     end
     for _, v in ipairs(virtual) do
@@ -2338,10 +2431,14 @@ local function navMove(dir)
         if popupOpen() then say("Nothing to navigate in this dialog", true) end
         return
     end
+    local prev = nav.index
     nav.index = nav.index + dir
     if nav.index > #nav.items then nav.index = 1 end
     if nav.index < 1 then nav.index = #nav.items end
-    say((nav.labels[nav.index] or "item") .. ", " .. nav.index .. " of " .. #nav.items, true)
+    -- Entering a named list ("Monster 1 list") says its name first.
+    local g = nav.groups[nav.index]
+    local prefix = (g and g:find(" list$") and g ~= nav.groups[prev]) and (g .. ". ") or ""
+    say(prefix .. (nav.labels[nav.index] or "item") .. ", " .. nav.index .. " of " .. #nav.items, true)
 end
 
 -- [ and ] when not placing: jump between groups of the list (buttons,
@@ -2478,6 +2575,23 @@ function nav.muteGameEnter(skip)
 end
 end -- do (Enter muting)
 
+-- After picking a monster on the breeding screen: what is chosen, what next.
+function nav.breedingStatus()
+    local root = liveMenu("breeding_v2")
+    if not root then return end
+    local a, b, heart = FRIENDLY.__social.breedPicks(root)
+    local h = heart and elementText(heart)
+    if a and b then
+        say("Breeding " .. a .. " with " .. b .. ". Now press " .. ((h and h ~= "") and h or "the Breed button")
+            .. ", near the top of the list.", true)
+    elseif a or b then
+        say((a or b) .. " picked as " .. (a and "monster 1" or "monster 2") .. ". Now choose "
+            .. (a and "monster 2" or "monster 1") .. ".", true)
+    else
+        say("No monsters picked.", true)
+    end
+end
+
 local function navActivate()
     if vmenu.active then                        -- run the chosen list entry
         if vmenu.index < 1 then say("Press Tab to choose", true) return end
@@ -2500,7 +2614,9 @@ local function navActivate()
         return
     end
     pcall(nav.muteGameEnter, el)                -- before the press, never after
+    local breedRow = (nav.groups[nav.index] or ""):find("^Monster %d list$") and (elementName(el) or ""):find("^entry%d")
     if pressElement(el) then say(label, false) else say("Could not activate " .. label, true) end
+    if breedRow then later(0.4, nav.breedingStatus) end
     -- Don't force an index reset here: navContext's key already changes (and
     -- resets focus) if a popup opened or the screen changed. If activation did
     -- nothing to the screen, keep the user's place in the list.
@@ -2551,7 +2667,8 @@ local function backButtonIn(items, labels)
                 -- "Exit" only as the whole label: never "EXIT GAME" on Options.
                 if lower == w or (w ~= "exit" and lower:find("^" .. w .. "[%s,%.:]")) then return el, label end
             end
-            if nm and OK_NAMES[nm] then okEl, okLabel, okCount = el, label, okCount + 1 end
+            -- "Continue" (rewards, "Click to continue") is the way out too.
+            if (nm and OK_NAMES[nm]) or lower == "continue" then okEl, okLabel, okCount = el, label, okCount + 1 end
         end
     end
     -- A message with only an OK button: OK is the way out.
