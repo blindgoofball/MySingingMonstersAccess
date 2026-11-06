@@ -599,7 +599,7 @@ local function socialLabel(el, name)
     if name == "EncoreBar" then
         local parts = { "Encore event" }
         local pts = elementText(findNamed(el, "RewardBar", 1))
-        local a, b = pts and pts:match("(%d+)%s*/%s*(%d+)")
+        local a, b = (pts or ""):match("(%d+)%s*/%s*(%d+)")
         if a then parts[#parts + 1] = a .. " of " .. b .. " points" elseif pts then parts[#parts + 1] = pts end
         local left = elementText(findNamed(el, "Timer", 1))
         if left then parts[#parts + 1] = left .. " left" end
@@ -1297,7 +1297,7 @@ POPUP_READERS.popup_encore_info = function(popup)
     pcall(function()
         local bar = findNamed(game.getHUD(), "EncoreBar", 2)
         local pts = bar and elementText(findNamed(bar, "RewardBar", 1))
-        local a, b = pts and pts:match("(%d+)%s*/%s*(%d+)")
+        local a, b = (pts or ""):match("(%d+)%s*/%s*(%d+)")
         if a then parts[#parts + 1] = "You have " .. a .. " of " .. b .. " points" end
         local left = bar and elementText(findNamed(bar, "Timer", 1))
         if left then parts[#parts + 1] = left .. " left" end
