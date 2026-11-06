@@ -1585,17 +1585,6 @@ local function tapEntity(entity, name, wantKey, reselect, done, untilSomething)
         if done then done(false) end
         return
     end
-    -- The game can ignore every click while its touch input is switched off
-    -- (the Book of Monsters turns it off while open) or while it thinks a
-    -- controller is in use. Turn touch back on, and log the input state so a
-    -- debug zip shows it.
-    pcall(function() game.setTouchEnable(true) end)
-    local inputState = {}
-    for _, f in ipairs({ "getControllerActive", "getControllerType", "getControllerName", "selectedInput" }) do
-        local ok, v = pcall(function() return game[f]() end)
-        inputState[#inputState + 1] = f .. "=" .. (ok and tostring(v) or "ERR")
-    end
-    a11y_log("[tap] input: " .. table.concat(inputState, " "))
     local function try(i)
         local pt = TAP_POINTS[i]
         local clickedAt = clock()
