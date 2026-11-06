@@ -357,13 +357,42 @@ static int JEODE_CALL j_a11y_click_fraction(void *L)
     pt.y = (LONG)(rc.bottom * fy);
     ClientToScreen(hwnd, &pt);
 
-    GetCursorPos(&saved);
-    SetCursorPos(pt.x, pt.y);
-    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-    SetCursorPos(saved.x, saved.y);
+    {
+        /* What is under the point? If it isn't the game window (an overlay,
+           another app on top), a real click goes there instead; then post the
+           click to the game window directly, in client coordinates. Logged
+           so a debug zip shows why a click missed. */
+        HWND under = WindowFromPoint(pt);
+        HWND underTop = under ? GetAncestor(under, GA_ROOT) : NULL;
+        char cls[64] = "";
+        POINT back = { 0, 0 }, client = { 0, 0 };
+        UINT dpi = 0;
+        HMODULE u32 = GetModuleHandleA("user32.dll");
+        typedef UINT (WINAPI *GetDpiForWindow_t)(HWND);
+        GetDpiForWindow_t pGetDpiForWindow = u32 ? (GetDpiForWindow_t)GetProcAddress(u32, "GetDpiForWindow") : NULL;
+        if (pGetDpiForWindow) dpi = pGetDpiForWindow(hwnd);
+        if (under) GetClassNameA(under, cls, sizeof(cls));
 
-    A11Y_Log("click_fraction (%.2f,%.2f) -> screen (%ld,%ld)", fx, fy, pt.x, pt.y);
+        GetCursorPos(&saved);
+        SetCursorPos(pt.x, pt.y);
+        GetCursorPos(&back);
+        client = pt;
+        ScreenToClient(hwnd, &client);
+        if (underTop == hwnd || under == hwnd) {
+            mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+            mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+        } else {
+            LPARAM lp = MAKELPARAM((short)client.x, (short)client.y);
+            PostMessageA(hwnd, WM_MOUSEMOVE, 0, lp);
+            PostMessageA(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp);
+            PostMessageA(hwnd, WM_LBUTTONUP, 0, lp);
+        }
+        SetCursorPos(saved.x, saved.y);
+
+        A11Y_Log("click_fraction (%.2f,%.2f) -> screen (%ld,%ld) client %ldx%ld dpi %u cursor-after-move (%ld,%ld) under=%p (%s)%s",
+                 fx, fy, pt.x, pt.y, rc.right, rc.bottom, dpi, back.x, back.y, (void *)under, cls,
+                 (underTop == hwnd || under == hwnd) ? "" : " NOT the game window: posted to it instead");
+    }
     return 0;
 }
 
