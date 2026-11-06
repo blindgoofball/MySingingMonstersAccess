@@ -46,7 +46,11 @@ end
 
 -- Small helper so accidental nils never raise inside the game loop.
 local function say(text, interrupt)
-    if text and text ~= "" then speak(tostring(text), interrupt and true or false) end
+    if not text then return end
+    -- Game text carries colour and style tags (<c=#45db99>Diamonds</c>) that
+    -- some paths pass through raw. Strip them here, so nothing speaks them.
+    text = tostring(text):gsub("</?%a[^<>]*>", "")
+    if text ~= "" then speak(text, interrupt and true or false) end
 end
 
 -- ---------------------------------------------------------------------------
@@ -949,6 +953,19 @@ local function collectControls(root, out, depth, group)
         elseif cname == "IslandName" and social and elementName(root) == "book_o_monsters" and elementText(child) then
             local text = elementText(child)
             out[#out + 1] = { el = { virtual = function() say(text, true) end }, label = "Page: " .. text }
+        elseif cname and cname:find("^scratchEntry%d$") and FRIENDLY.__scratch and elementName(root) == "ScratchBox" then
+            -- Scratch ticket squares: Enter rubs the coating off (FRIENDLY.__scratch).
+            local S = FRIENDLY.__scratch
+            local i = tonumber(cname:match("%d$"))
+            if i == 0 then
+                out[#out + 1] = { el = { virtual = function() S.scratch({ 0, 1, 2, 3, 4, 5 }) end },
+                                  label = "Scratch all squares" }
+            end
+            local lbl = S.label(i)
+            if lbl then
+                out[#out + 1] = { el = { virtual = function() S.scratch({ i }) end }, label = lbl }
+            end
+            child = nil
         elseif cname == "CurrentSender" and social then
             local text = social.mailMessage(root)
             if text then
@@ -1407,6 +1424,213 @@ function menuState.nameEcho(root)
     else
         say(cur ~= "" and cur or "empty", true)
     end
+end
+
+-- Scratch ticket (minigame_doorprize, template_scratchentry): six squares
+-- under a scratch-off coating that the game's native ScratchBox wipes as a
+-- finger rubs over it. No Lua call reveals a square, so the mod rubs each one
+-- with engine touch drags (a11y_touch press, moves, release): the handler
+-- turns moves into drags while a press is down. A revealed square's sprite
+-- moves to the FrontPopUps layer (its "reveal" event). Lives on FRIENDLY so
+-- collectControls, which is above menuState, can reach it.
+do
+local S = {}
+FRIENDLY.__scratch = S
+local SPRITE_WORDS = { { "diamond", "diamonds" }, { "coin", "coins" }, { "food", "food" }, { "treat", "treats" },
+    { "relic", "relics" }, { "key", "keys" }, { "shard", "shards" }, { "xp", "XP" }, { "starpower", "starpower" },
+    { "egg", "egg" } }
+
+function S.entry(i)
+    local root = liveMenu("minigame_doorprize")
+    local box = root and findNamed(root, "ScratchBox", 4)
+    return box and findNamed(box, "scratchEntry" .. i, 1)
+end
+
+function S.revealed(e)
+    local layer = nil
+    pcall(function() layer = e:GetElement("iSprite"):GetComponent("Sprite")("layer"):GetString() end)
+    return layer == "FrontPopUps"
+end
+
+-- What a square holds, from the game's own scratch data (only asked once
+-- the square is uncovered).
+function S.prize(i)
+    local str, sprite = nil, nil
+    pcall(function() str = tostring(game.scratchEntryString(i)) end)
+    pcall(function() sprite = tostring(game.scratchEntrySprite(i)) end)
+    a11y_log("[scratch] square " .. i .. " string=" .. tostring(str) .. " sprite=" .. tostring(sprite))
+    local kind = nil
+    local low = (sprite or ""):lower()
+    for _, w in ipairs(SPRITE_WORDS) do
+        if low:find(w[1], 1, true) then kind = w[2] break end
+    end
+    -- Monster tickets: the string is a monster id and the picture its egg
+    -- ("gfx/spore_BDE"), not an amount.
+    if str and str:find("^%d+$") and low:find("spore", 1, true) then
+        local name = nil
+        pcall(function() name = cleanText(LOC(game.getMonsterData(tonumber(str)):name())) end)
+        if name then return name .. " egg" end
+    end
+    if str and str:find("^%d+$") then
+        local n = str
+        pcall(function() n = game.commaizeNumber(str) end)
+        return n .. (kind and (" " .. kind) or "")
+    end
+    local name = str and str ~= "" and cleanText(localize(str) or str)
+    if name and name ~= "" then return name end
+    if kind then return kind end
+    return (sprite or "a prize"):gsub("[_%-]", " ")
+end
+
+function S.label(i)
+    local e = S.entry(i)
+    if not e then return nil end
+    if S.revealed(e) then
+        local won = false
+        pcall(function() won = game.isWinningZone(i) and true or false end)
+        return "Square " .. (i + 1) .. ": " .. S.prize(i) .. (won and ", match" or "")
+    end
+    return "Square " .. (i + 1) .. ", covered"
+end
+
+-- Rub square i: zig-zag strokes inside it, one stroke per frame. pass 2 rubs
+-- up and down instead, for a second try. done(revealed) runs afterwards.
+function S.rub(i, pass, done)
+    local touch = resolve("a11y_touch")
+    local e = S.entry(i)
+    if not e or type(touch) ~= "function" then if done then done(false) end return end
+    local sw, sh, x, y, w, h = 0, 0, 0, 0, 0, 0
+    pcall(function()
+        sw, sh = lua_sys.screenWidth(), lua_sys.screenHeight()
+        x, y, w, h = e:absX(), e:absY(), e:absW(), e:absH()
+    end)
+    if sw <= 0 or sh <= 0 or w <= 0 or h <= 0 then if done then done(false) end return end
+    a11y_log("[scratch] rub " .. i .. " pass " .. pass .. " at " .. math.floor(x) .. "," .. math.floor(y)
+        .. " size " .. math.floor(w) .. "x" .. math.floor(h) .. " of " .. math.floor(sw) .. "x" .. math.floor(sh))
+    local strokes = {}
+    local ROWS, STEPS = 7, 8
+    for r = 0, ROWS - 1 do
+        local pts = {}
+        for s = 0, STEPS do
+            local a = 0.08 + 0.84 * (r / (ROWS - 1))
+            local b = 0.08 + 0.84 * (s / STEPS)
+            if r % 2 == 1 then b = 1 - b end
+            if pass == 2 then a, b = b, a end
+            pts[#pts + 1] = { (x + w * b) / sw, (y + h * a) / sh }
+        end
+        strokes[#strokes + 1] = pts
+    end
+    local first = strokes[1][1]
+    pcall(touch, first[1], first[2], 2)
+    pcall(touch, first[1], first[2], 1)
+    local k = 0
+    local function step()
+        k = k + 1
+        local pts = strokes[k]
+        if not pts then
+            local last = strokes[#strokes]; last = last[#last]
+            pcall(touch, last[1], last[2], 0)
+            later(0.4, function()
+                local now = S.entry(i)
+                if done then done(now ~= nil and S.revealed(now)) end
+            end)
+            return
+        end
+        for _, p in ipairs(pts) do pcall(touch, p[1], p[2], 2) end
+        later(0.02, step)
+    end
+    later(0.02, step)
+end
+
+-- Scratch the given squares in turn (two passes each at most), then say what
+-- they hold. S.busy keeps a second Enter from starting another run.
+function S.scratch(list)
+    if S.busy then say("Still scratching", true) return end
+    -- Called right after menuState.touch(), which hides every menu until it
+    -- ticks again: start on the next frame.
+    S.busy = true
+    later(0.05, function() S.busy = false S.start(list) end)
+end
+
+function S.start(list)
+    if not liveMenu("minigame_doorprize") then
+        a11y_log("[scratch] ticket not live")
+        say("The scratch ticket isn't ready yet, try again", true)
+        return
+    end
+    local touch = resolve("a11y_touch")
+    if type(touch) ~= "function" then
+        say("Scratching needs the mod's touch support, which couldn't start in this version of the game", true)
+        return
+    end
+    S.busy = true
+    say(#list == 1 and ("Scratching square " .. (list[1] + 1)) or "Scratching", true)
+    local found, idx = {}, 0
+    local function nextSquare()
+        idx = idx + 1
+        local i = list[idx]
+        if i == nil then
+            S.busy = false
+            S.report(found, #list == 1)
+            return
+        end
+        local e = S.entry(i)
+        if not e then S.busy = false return end      -- the ticket closed
+        if S.revealed(e) then found[#found + 1] = i nextSquare() return end
+        S.rub(i, 1, function(ok)
+            if ok then found[#found + 1] = i nextSquare() return end
+            S.rub(i, 2, function(ok2)
+                if ok2 then found[#found + 1] = i else a11y_log("[scratch] square " .. i .. " did not reveal") end
+                nextSquare()
+            end)
+        end)
+    end
+    nextSquare()
+end
+
+function S.report(found, single)
+    local parts = {}
+    for _, i in ipairs(found) do
+        local l = S.label(i)
+        if l then parts[#parts + 1] = l end
+    end
+    local left = 0
+    for i = 0, 5 do
+        local e = S.entry(i)
+        if e and not S.revealed(e) then left = left + 1 end
+    end
+    if #parts == 0 then
+        say("The square did not uncover. The game may not have taken the scratch; try again, or tell the mod's author.", true)
+        return
+    end
+    if left > 0 then
+        parts[#parts + 1] = left .. (left == 1 and " square" or " squares") .. " still covered"
+        say(joinSentences(parts), true)
+        return
+    end
+    -- All six: the game greys out the losers, then shows Collect (1 second).
+    say(joinSentences(parts), true)
+    later(1.3, function()
+        local won = {}
+        for i = 0, 5 do
+            local w = false
+            pcall(function() w = game.isWinningZone(i) end)
+            if w then won[#won + 1] = S.prize(i) end
+        end
+        local msg = #won > 0 and ("You matched three: " .. won[1] .. ".") or "All squares uncovered."
+        say(msg .. " Tab to Collect.", false)
+    end)
+end
+end -- do (scratch ticket)
+
+POPUP_READERS.minigame_doorprize = function(popup)
+    local parts = { "Scratch ticket" }
+    local desc = shownText(popup, "Description")
+    if desc then parts[#parts + 1] = desc end
+    local more = shownText(popup, "MonsterDescription")
+    if more then parts[#parts + 1] = more end
+    parts[#parts + 1] = "Tab to a square and press Enter to scratch it, or choose Scratch all squares"
+    return joinSentences(parts)
 end
 
 POPUP_READERS.popup_encore_info = function(popup)
@@ -3032,6 +3256,10 @@ local function doBack()
         return
     end
     local onScreen = popupOpen() or topOverlay() ~= nil
+    if liveMenu("minigame_doorprize") then
+        say("The scratch ticket has no close button. Scratch all six squares, then press Collect.", true)
+        return
+    end
     if onScreen or objectSelected() then
         local el, label = findBackButton()
         if el then

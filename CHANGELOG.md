@@ -2,6 +2,16 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## Unreleased
+
+### Added
+
+- The Monster Scratch Ticket (SCRATCH on the Nursery) can be played: Tab to a square and press Enter to scratch it, or choose "Scratch all squares". Uncovered squares say their prize, and once all six are uncovered you hear what you matched and can Tab to Collect. Escape explains that the ticket only closes through Collect.
+
+### Fixed
+
+- Messages such as "You don't have enough Diamonds" read out colour codes like "<c=#45db99>" around the currency name. They now just say the currency, for coins, food, diamonds and everything else.
+
 ## 0.1.7-alpha - 2026-11-06
 
 ### Fixed
