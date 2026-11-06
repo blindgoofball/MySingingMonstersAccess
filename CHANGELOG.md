@@ -4,6 +4,10 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.4-alpha - 2026-11-05
+
 ### Fixed
 
 - The Map showed only Close and Help most of the time (since 0.1.3-alpha): the islands are back. The crash fix in 0.1.3-alpha expected every screen to refresh every frame, and the map doesn't.
