@@ -615,7 +615,7 @@ static void install_tutorial_popup_hook(void)
    GetInt("pos_x", 0) on the entity's variable table at +0x3C. Lua can't reach
    those variables, so we call the getters. Found without hardcoded addresses:
    locate the 8-byte string literal "pos_x\0\0\0", then the getter that loads
-   it (A1 <addr> 0F 57 C0 8B 49 3C); the function starts 0x3C bytes earlier.
+   it (A1 <addr> 0F 57 C0 8B 49 3C); the function starts shortly before.
    --------------------------------------------------------------------------- */
 typedef int(__fastcall *pos_getter_fn)(void *ecx, void *edx);
 static pos_getter_fn g_posX = NULL, g_posY = NULL;
@@ -666,9 +666,22 @@ static pos_getter_fn resolve_pos_getter(uintptr_t base, const char *name5)
         if (hit) break;
     }
     if (!hit) { A11Y_Log("tile: getter for '%s' not found (%d literal copies)", name5, tries); return NULL; }
-    fn = hit - 0x3C;
-    if (memcmp((void *)fn, PROLOGUE, sizeof(PROLOGUE)) != 0) {
-        A11Y_Log("tile: getter for '%s' prologue mismatch at RVA 0x%x", name5, (unsigned)(fn - base));
+    /* The function starts a little before that load: 0x3C bytes in 5.7.2,
+       0x3D in 5.7.4. Search back for the prologue right after the 0xCC
+       padding between functions, so small compiler changes don't break it. */
+    fn = 0;
+    {
+        uintptr_t k;
+        for (k = 0x20; k <= 0x80; k++) {
+            uintptr_t at = hit - k;
+            if (memcmp((void *)at, PROLOGUE, sizeof(PROLOGUE)) == 0 && *(unsigned char *)(at - 1) == 0xCC) {
+                fn = at;
+                break;
+            }
+        }
+    }
+    if (!fn) {
+        A11Y_Log("tile: getter for '%s' prologue not found before RVA 0x%x", name5, (unsigned)(hit - base));
         return NULL;
     }
     A11Y_Log("tile: '%s' getter at RVA 0x%x", name5, (unsigned)(fn - base));
