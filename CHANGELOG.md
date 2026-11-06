@@ -2,7 +2,7 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
-## Unreleased
+## 0.1.7-alpha - 2026-11-06
 
 ### Fixed
 
