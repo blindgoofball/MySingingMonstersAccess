@@ -2,11 +2,16 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
-## Unreleased
+## 0.1.8-alpha - 2026-11-06
 
 ### Added
 
 - The Monster Scratch Ticket (SCRATCH on the Nursery) can be played: Tab to a square and press Enter to scratch it, or choose "Scratch all squares". Uncovered squares say their prize, and once all six are uncovered you hear what you matched and can Tab to Collect. Escape explains that the ticket only closes through Collect.
+
+### Improved
+
+- Monsters that aren't ordinary say their rarity before the species, for example "Glob, Rare Toe Jammer", in the Monsters list, when selected, in the breeding lists and on scratch ticket prizes. Ordinary monsters stay as they were.
+- A muted monster says "muted" after its food status in the Monsters list, for example "Noggy1, Noggin, level 6, fed 0 of 4, muted, 88 coins".
 
 ### Fixed
 

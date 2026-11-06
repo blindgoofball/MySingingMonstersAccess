@@ -426,6 +426,22 @@ local function currencyCounterName(name)
     return ({ ["1"] = "Diamonds", ["2"] = "Food" })[n] or "Currency"
 end
 
+-- Rarity of a monster type id, only when it isn't an ordinary monster
+-- ("Rare", "Epic", "Seasonal", "Mythical"); nil for ordinary ones. withRarity
+-- puts it before a species name unless the name already says it. On
+-- FRIENDLY, not a local: the main chunk is at Lua's 200-local limit.
+function FRIENDLY.__withRarity(name, typeId)
+    if not typeId or not name then return name end
+    local w = nil
+    for _, r in ipairs({ { "isSeasonal", "Seasonal" }, { "isMythicalType", "Mythical" },
+                         { "isEpic", "Epic" }, { "isRare", "Rare" } }) do
+        local ok, v = pcall(function() return game[r[1]](typeId) end)
+        if ok and v == true then w = r[2] break end
+    end
+    if not w or name:lower():find(w:lower(), 1, true) then return name end
+    return w .. " " .. name
+end
+
 -- Friends screen (social.xml, template_social_card, template_topislandsentry_new).
 -- Its buttons are icons whose meaning comes from the sprite or the parent.
 -- Returns label, true (final: no row context added) or nil.
@@ -495,6 +511,7 @@ local function mailMessage(el)
     if #parts == 0 then return nil end
     return table.concat(parts, ". ")
 end
+
 -- A Book of Monsters entry (BOMEntry.lua): only a portrait, so describe it
 -- from its MonsterID the way BOMEntry:Refresh decides how to draw it.
 local function bookEntry(e)
@@ -667,6 +684,20 @@ local function socialLabel(el, name)
         if side then
             local parts = { breedName(el) or "Monster" }
             local species = elementText(findNamed(el, "MonsterSpecies", 1))
+            -- The row's Lua object keeps its monster (BreedingMonsterListEntry).
+            local tid, kind = nil, "none"
+            pcall(function()
+                local m = el.monster
+                kind = type(m)
+                if kind == "userdata" then tid = m:monsterTypeId()
+                elseif kind == "table" then tid = m.monsterTypeId or m.monsterId or m.MonsterId end
+                if type(tid) == "function" then tid = tid(m) end
+            end)
+            if not A11Y_RARITY_LOGGED then
+                A11Y_RARITY_LOGGED = true
+                a11y_log("[rarity] breeding row monster is " .. kind .. ", type id " .. tostring(tid))
+            end
+            if species then species = FRIENDLY.__withRarity(species, tonumber(tid)) end
             if species and species ~= parts[1] then parts[#parts + 1] = species end
             local feed = findNamed(el, "feed_overlay", 1)
             local need = feed and isVisible(feed) and elementText(feed)
@@ -1469,7 +1500,7 @@ function S.prize(i)
     if str and str:find("^%d+$") and low:find("spore", 1, true) then
         local name = nil
         pcall(function() name = cleanText(LOC(game.getMonsterData(tonumber(str)):name())) end)
-        if name then return name .. " egg" end
+        if name then return FRIENDLY.__withRarity(name, tonumber(str)) .. " egg" end
     end
     if str and str:find("^%d+$") then
         local n = str
@@ -1755,6 +1786,9 @@ local function selectedName()
     if isMonster then
         local species = nil
         pcall(function() species = cleanText(LOC(game.getMonsterDataFromUniqueId(game.selectedMonsterId()):name())) end)
+        local tid = nil
+        pcall(function() tid = game.GetMonster(game.selectedMonsterId()):monsterTypeId() end)
+        species = FRIENDLY.__withRarity(species, tid)
         if species and (not n or n:lower() ~= species:lower()) then
             return n and (n .. ", " .. species) or species
         end
@@ -1794,9 +1828,11 @@ end
 
 -- The species ("Toe Jammer"), from the monster's data.
 local function monsterSpecies(uid)
-    local sp = nil
+    local sp, tid = nil, nil
     pcall(function() sp = cleanText(LOC(game.getMonsterDataFromUniqueId(uid):name())) end)
-    return sp
+    pcall(function() tid = game.GetMonster(uid):monsterTypeId() end)
+    if not tid then pcall(function() tid = game.GetMultiMonster(uid):monsterTypeId() end) end
+    return FRIENDLY.__withRarity(sp, tid)
 end
 
 -- Players can rename monsters, and getMonsterName returns that nickname
@@ -2079,6 +2115,9 @@ local function monsterStatus(uid)
         pcall(function() need = ent:foodRequired() or 0 end)
         if lvl then parts[#parts + 1] = "level " .. tostring(lvl) end
         if fed and need > 0 and lvl and lvl < 20 then parts[#parts + 1] = "fed " .. tostring(fed) .. " of 4" end
+        local muted = false
+        pcall(function() muted = ent:isMuted() and true or false end)
+        if muted then parts[#parts + 1] = "muted" end
     end
     local coins = 0
     pcall(function() coins = game.monsterEarnings(uid) or 0 end)
