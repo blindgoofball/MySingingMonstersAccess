@@ -333,66 +333,99 @@ static int JEODE_CALL j_a11y_log(void *L)
     return 0;
 }
 
-/* a11y_click_fraction(fx, fy) : synthesize a left mouse click at (fx,fy) of the
-   game window's client area, 0..1. Used for C++-drawn tutorial dialogs that
-   have no reachable UI element -- we click their button by screen position.
-   Restores the cursor afterwards. Only fires if the game is foreground. */
+/* a11y_click_fraction(fx, fy) : a left click at (fx,fy) of the game window's
+   client area, 0..1 (island taps, C++-drawn tutorial dialogs). Only fires if
+   the game is foreground.
+
+   The press is held for a few frames on a thread of its own, like a11y_drag.
+   Pressing and releasing in one instant puts both in the same frame, and the
+   game can drop that as no tap at all: on a friend's PC every click landed on
+   the game window at the right spot (logged below) and still did nothing.
+   Skipped while a drag or another click is still running. */
+#define CLICK_SETTLE_MS 35
+#define CLICK_HOLD_MS   80
+
+typedef struct { POINT pt; HWND hwnd; int direct; } ClickJob;
+
+static unsigned __stdcall ClickProc(void *param)
+{
+    ClickJob job = *(ClickJob *)param;
+    POINT saved, client;
+    free(param);
+    GetCursorPos(&saved);
+    SetCursorPos(job.pt.x, job.pt.y);
+    client = job.pt;
+    ScreenToClient(job.hwnd, &client);
+    if (job.direct) {
+        Sleep(CLICK_SETTLE_MS);
+        mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, 0);
+        Sleep(CLICK_SETTLE_MS);
+        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+        Sleep(CLICK_HOLD_MS);
+        mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+    } else {
+        /* Something else is on top at that point: post to the game window. */
+        LPARAM lp = MAKELPARAM((short)client.x, (short)client.y);
+        PostMessageA(job.hwnd, WM_MOUSEMOVE, 0, lp);
+        Sleep(CLICK_SETTLE_MS);
+        PostMessageA(job.hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp);
+        Sleep(CLICK_HOLD_MS);
+        PostMessageA(job.hwnd, WM_LBUTTONUP, 0, lp);
+    }
+    Sleep(CLICK_SETTLE_MS);
+    SetCursorPos(saved.x, saved.y);
+    InterlockedExchange(&g_dragBusy, 0);
+    return 0;
+}
+
 static int JEODE_CALL j_a11y_click_fraction(void *L)
 {
     lua_State *ls = (lua_State *)L;
     double fx = lua_tonumber(ls, 1);
     double fy = lua_tonumber(ls, 2);
-    HWND hwnd;
+    HWND hwnd, under, underTop;
     DWORD pid = 0;
     RECT rc;
-    POINT pt, saved;
+    POINT pt;
+    char cls[64] = "";
+    UINT dpi = 0;
+    HMODULE u32;
+    ClickJob *job;
+    HANDLE th;
+    typedef UINT (WINAPI *GetDpiForWindow_t)(HWND);
+    GetDpiForWindow_t pGetDpiForWindow;
 
     hwnd = GetForegroundWindow();
     if (!hwnd) return 0;
     GetWindowThreadProcessId(hwnd, &pid);
     if (pid != GetCurrentProcessId()) return 0;
-
     if (!GetClientRect(hwnd, &rc)) return 0;
     pt.x = (LONG)(rc.right  * fx);
     pt.y = (LONG)(rc.bottom * fy);
     ClientToScreen(hwnd, &pt);
 
-    {
-        /* What is under the point? If it isn't the game window (an overlay,
-           another app on top), a real click goes there instead; then post the
-           click to the game window directly, in client coordinates. Logged
-           so a debug zip shows why a click missed. */
-        HWND under = WindowFromPoint(pt);
-        HWND underTop = under ? GetAncestor(under, GA_ROOT) : NULL;
-        char cls[64] = "";
-        POINT back = { 0, 0 }, client = { 0, 0 };
-        UINT dpi = 0;
-        HMODULE u32 = GetModuleHandleA("user32.dll");
-        typedef UINT (WINAPI *GetDpiForWindow_t)(HWND);
-        GetDpiForWindow_t pGetDpiForWindow = u32 ? (GetDpiForWindow_t)GetProcAddress(u32, "GetDpiForWindow") : NULL;
-        if (pGetDpiForWindow) dpi = pGetDpiForWindow(hwnd);
-        if (under) GetClassNameA(under, cls, sizeof(cls));
+    under = WindowFromPoint(pt);
+    underTop = under ? GetAncestor(under, GA_ROOT) : NULL;
+    if (under) GetClassNameA(under, cls, sizeof(cls));
+    u32 = GetModuleHandleA("user32.dll");
+    pGetDpiForWindow = u32 ? (GetDpiForWindow_t)GetProcAddress(u32, "GetDpiForWindow") : NULL;
+    if (pGetDpiForWindow) dpi = pGetDpiForWindow(hwnd);
 
-        GetCursorPos(&saved);
-        SetCursorPos(pt.x, pt.y);
-        GetCursorPos(&back);
-        client = pt;
-        ScreenToClient(hwnd, &client);
-        if (underTop == hwnd || under == hwnd) {
-            mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-            mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-        } else {
-            LPARAM lp = MAKELPARAM((short)client.x, (short)client.y);
-            PostMessageA(hwnd, WM_MOUSEMOVE, 0, lp);
-            PostMessageA(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp);
-            PostMessageA(hwnd, WM_LBUTTONUP, 0, lp);
-        }
-        SetCursorPos(saved.x, saved.y);
-
-        A11Y_Log("click_fraction (%.2f,%.2f) -> screen (%ld,%ld) client %ldx%ld dpi %u cursor-after-move (%ld,%ld) under=%p (%s)%s",
-                 fx, fy, pt.x, pt.y, rc.right, rc.bottom, dpi, back.x, back.y, (void *)under, cls,
-                 (underTop == hwnd || under == hwnd) ? "" : " NOT the game window: posted to it instead");
+    if (InterlockedCompareExchange(&g_dragBusy, 1, 0) != 0) {
+        A11Y_Log("click_fraction skipped: a drag or click is still running");
+        return 0;
     }
+    job = (ClickJob *)malloc(sizeof(ClickJob));
+    if (!job) { InterlockedExchange(&g_dragBusy, 0); return 0; }
+    job->pt = pt;
+    job->hwnd = hwnd;
+    job->direct = (under == hwnd || underTop == hwnd);
+    A11Y_Log("click_fraction (%.2f,%.2f) -> screen (%ld,%ld) client %ldx%ld dpi %u under=%p (%s)%s, held %d ms",
+             fx, fy, pt.x, pt.y, rc.right, rc.bottom, dpi, (void *)under, cls,
+             job->direct ? "" : " NOT the game window: posting to it", CLICK_HOLD_MS);
+    th = (HANDLE)_beginthreadex(NULL, 0, ClickProc, job, 0, NULL);
+    if (!th) { free(job); InterlockedExchange(&g_dragBusy, 0); return 0; }
+    CloseHandle(th);
     return 0;
 }
 
