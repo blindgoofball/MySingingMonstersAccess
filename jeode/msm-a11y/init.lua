@@ -2555,10 +2555,11 @@ local function navEnsure()
     return #nav.items > 0
 end
 
-local function navMove(dir)
+-- edge: Home/End, jump to the first (dir < 0) or last (dir > 0) item.
+local function navMove(dir, edge)
     if vmenu.active then                        -- Places / Objects list takes precedence
         local n = #vmenu.items
-        vmenu.index = vmenu.index + dir
+        vmenu.index = edge and (dir > 0 and n or 1) or (vmenu.index + dir)
         if vmenu.index > n then vmenu.index = 1 end
         if vmenu.index < 1 then vmenu.index = n end
         local it = vmenu.items[vmenu.index]
@@ -2572,7 +2573,7 @@ local function navMove(dir)
         return
     end
     local prev = nav.index
-    nav.index = nav.index + dir
+    nav.index = edge and (dir > 0 and #nav.items or 1) or (nav.index + dir)
     if nav.index > #nav.items then nav.index = 1 end
     if nav.index < 1 then nav.index = #nav.items end
     -- Entering a named list ("Monster 1 list") says its name first.
@@ -3739,6 +3740,7 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
     jeode.registerGlobal("a11y_announcePopup", announceCurrentPopup)
     jeode.registerGlobal("a11y_navNext", function() navMove(1) end)
     jeode.registerGlobal("a11y_navPrev", function() navMove(-1) end)
+    jeode.registerGlobal("a11y_navEdge", function(dir) navMove(dir, true) end)
     jeode.registerGlobal("a11y_navActivate", navActivate)
     jeode.registerGlobal("a11y_menu", openPlaces)
     jeode.registerGlobal("a11y_tutorialContinue", tutorialContinue)

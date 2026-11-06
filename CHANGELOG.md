@@ -6,6 +6,7 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ### Added
 
+- Home and End jump to the first and last item of a list or screen, including the Places and island object lists.
 - Control+Shift+C puts the camera back on the whole island, the same view the game uses after a new island's fanfare.
 
 ### Improved

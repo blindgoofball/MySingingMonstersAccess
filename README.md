@@ -81,6 +81,7 @@ Only needed if `install.bat` doesn't work for you.
 | Tab / Shift+Tab | Next / previous item on the current screen |
 | Enter | Press the current item |
 | Escape or Backspace | Go back: close the screen, cancel, answer No, or deselect. The game's own Escape is tried first. |
+| Home and End | Jump to the first or last item of the current list or screen. |
 | Left bracket and Right bracket | On the island: switch between groups (Buttons, Buildings, Monsters, Decorations, Trees and rocks). While placing an object: jump between nearby landmarks. |
 | Comma and Period | While placing an object: step through the free spots near where you are. |
 | Arrow keys | While placing an object: move it one tile. |
