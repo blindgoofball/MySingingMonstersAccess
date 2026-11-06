@@ -15,6 +15,8 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 ### Improved
 
 - Map: picking an island reads its details (cost, requirements, what you have collected) and puts focus on GO, so Enter travels there.
+- Encore: the event screen reads the event's name, theme, how points are earned (for example "Every 15 minutes of Incubation time earns 1 point"), your points and the time left. The Encore button on the main screen says your points and time left too.
+- "How it works" screens (Encore, sticker album) read their numbered steps.
 - Map: the arrow buttons are called Previous island and Next island, GO says which island it goes to, and the alert buttons at the top have proper names instead of "SeasonalAlert".
 
 ## 0.1.3-alpha - 2026-11-05

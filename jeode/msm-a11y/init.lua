@@ -326,7 +326,9 @@ local function shownText(root, name)
 end
 
 local TITLE_NAMES = { "Title", "TitleText", "TitleLabel", "Header" }
-local BODY_NAMES = { "Text", "Message", "MessageText", "Body", "Description", "Desc", "Notification", "Notification2" }
+-- Left / Center / Right: the numbered steps of "How it works" screens.
+local BODY_NAMES = { "Text", "Message", "MessageText", "Body", "Description", "Desc", "Notification", "Notification2",
+                     "Left", "Center", "Right" }
 
 local function popupTitle(popup)
     if not popup then return nil end
@@ -592,6 +594,16 @@ local function socialLabel(el, name)
     if name == "ActivateButton" and pn == "Main" then
         local island = elementText(findNamed(p, "IslandName", 1))
         return (elementText(el) or "Go") .. (island and (", travel to " .. island) or ""), true
+    end
+    -- HUD Encore button: the event's points and time left.
+    if name == "EncoreBar" then
+        local parts = { "Encore event" }
+        local pts = elementText(findNamed(el, "RewardBar", 1))
+        local a, b = pts and pts:match("(%d+)%s*/%s*(%d+)")
+        if a then parts[#parts + 1] = a .. " of " .. b .. " points" elseif pts then parts[#parts + 1] = pts end
+        local left = elementText(findNamed(el, "Timer", 1))
+        if left then parts[#parts + 1] = left .. " left" end
+        return table.concat(parts, ", "), true
     end
     local MAP_ALERTS = { SeasonalAlertButton = "Seasonal event", SaleAlertButton = "Sale",
                          NotificationAlertButton = "Notifications" }
@@ -1260,6 +1272,38 @@ local function liveMenu(name)
         if mm.rootName == name and menuState.usable(mm) then return mm.root end
     end
     return nil
+end
+
+-- Encore event info: name, theme, how points are earned ("15m = 1"), and the
+-- progress shown on the HUD's Encore button.
+POPUP_READERS.popup_encore_info = function(popup)
+    local parts = {}
+    local title = shownText(popup, "TitleFrame")
+    if title then parts[#parts + 1] = "Encore event: " .. title end
+    local theme = shownText(popup, "TopText")
+    if theme then parts[#parts + 1] = theme end
+    local conv = shownText(popup, "ConversionInfo")
+    if conv then
+        local n, unit, pts = conv:match("(%d+)%s*([smhd])%s*=%s*(%d+)")
+        local UNITS = { s = "seconds", m = "minutes", h = "hours", d = "days" }
+        if n then
+            local what = theme and theme:match(":%s*(.+)$")
+            parts[#parts + 1] = "Every " .. n .. " " .. UNITS[unit] .. (what and (" of " .. what .. " time") or "")
+                .. " earns " .. pts .. (pts == "1" and " point" or " points")
+        else
+            parts[#parts + 1] = conv
+        end
+    end
+    pcall(function()
+        local bar = findNamed(game.getHUD(), "EncoreBar", 2)
+        local pts = bar and elementText(findNamed(bar, "RewardBar", 1))
+        local a, b = pts and pts:match("(%d+)%s*/%s*(%d+)")
+        if a then parts[#parts + 1] = "You have " .. a .. " of " .. b .. " points" end
+        local left = bar and elementText(findNamed(bar, "Timer", 1))
+        if left then parts[#parts + 1] = left .. " left" end
+    end)
+    if #parts == 0 then return nil end
+    return joinSentences(parts)
 end
 
 -- "You received:": read the rewards. They can still be filling in when the
