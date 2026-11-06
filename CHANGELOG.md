@@ -2,12 +2,6 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
-## Unreleased
-
-### Fixed
-
-- Tutorial steps about the egg hatching ("Wait for the egg to hatch", "Speed up the hatching of your Mammott egg") pointed at the Breeding Structure instead of the Nursery, because they mention the egg. They now point at the Nursery. "Click on the Egg to transfer it to the Nursery" still points at the Breeding Structure, where that egg is.
-
 ## 0.1.6-alpha - 2026-11-06
 
 ### Added
@@ -22,6 +16,7 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ### Fixed
 
+- Tutorial steps about the egg hatching ("Wait for the egg to hatch", "Speed up the hatching of your Mammott egg") pointed at the Breeding Structure instead of the Nursery, because they mention the egg. They now point at the Nursery. "Click on the Egg to transfer it to the Nursery" still points at the Breeding Structure, where that egg is.
 - Control+Shift+W said "Collect All is on the bar" even before the game unlocks Collect All. It now says whether Collect All is there, recharging, or not unlocked yet, and if not, how to collect from each monster instead.
 - The Goals screen said "Nothing to navigate" (the game changed how goals are built in 5.7.4). Every goal now has a "Show me" item that says the goal, its progress and its reward, and Collect buttons say which goal and what you get, for example "Collect: Breed a Fwog and Potbelly together. Reward: 50 coins".
 
