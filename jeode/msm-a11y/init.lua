@@ -643,6 +643,13 @@ local function socialLabel(el, name)
     -- until it opens (nav.crackEgg). In the tutorial there may be no Skip
     -- button, so this is the way on.
     if name == "EggImage" then return "Egg, press Enter to crack it open", true end
+    -- A monster's info screen: the name plate at the top is the rename button
+    -- (SharedObjectInfo.lua ImageTitle -> game.showMonsterNamePopup). Its
+    -- touch is switched off for anything that isn't a monster.
+    if name == "ImageTitle" then
+        local t = elementText(el)
+        return "Rename" .. (t and (", now called " .. t) or ""), true
+    end
     -- The full-screen "Click to continue" area (rewards, card packs, the new
     -- island fanfare), shown only while that caption is showing.
     if (name == "Fade" or name == "TouchBlocker") and p then
@@ -1227,6 +1234,7 @@ local function menuTick(root, file)
     runPending(now, root)
     if file == "contextbar" and contextbarHook then pcall(contextbarHook) end
     if file == "hud" and readyHook then pcall(readyHook, now) end
+    if file == "popup_name_entry" and menuState.nameEcho then pcall(menuState.nameEcho, root) end
     if walletHook then pcall(walletHook, now) end
     local m = menus[file]
     if not m then
@@ -1364,6 +1372,43 @@ end
 
 -- Encore event info: name, theme, how points are earned ("15m = 1"), and the
 -- progress shown on the HUD's Encore button.
+-- Monster name entry (PopupMonsterNameEntry.lua): typed keys go straight to
+-- the game. Say what it's for and how it works, then echo what is typed.
+function menuState.nameEntryText(root)
+    local t = nil
+    pcall(function() t = root.TextEntry.Text("text"):GetString() end)
+    if not t then
+        local e = findNamed(root, "TextEntry", 4)
+        pcall(function() t = e.Text("text"):GetString() end)
+    end
+    return t or ""
+end
+POPUP_READERS.popup_name_entry = function(popup)
+    local title = elementText(findNamed(popup, "TitleLabel", 4)) or "Name your monster"
+    local desc = elementText(findNamed(popup, "Description", 4))
+    local cur = menuState.nameEntryText(popup)
+    menuState.nameText = cur
+    return joinSentences({ title, desc,
+        cur ~= "" and ("The name is now " .. cur) or "The name is empty",
+        "Type a new name. Backspace deletes the last letter, Enter saves, Escape cancels" })
+end
+function menuState.nameEcho(root)
+    local cur = menuState.nameEntryText(root)
+    local old = menuState.nameText
+    if old == nil then menuState.nameText = cur return end
+    if cur == old then return end
+    menuState.nameText = cur
+    if #cur > #old and cur:sub(1, #old) == old then
+        local added = cur:sub(#old + 1)
+        say(added == " " and "space" or added, true)
+    elseif #cur < #old and old:sub(1, #cur) == cur then
+        local gone = old:sub(#cur + 1)
+        say("deleted " .. (gone == " " and "space" or gone) .. (cur == "" and ", empty" or ""), true)
+    else
+        say(cur ~= "" and cur or "empty", true)
+    end
+end
+
 POPUP_READERS.popup_encore_info = function(popup)
     local parts = {}
     local title = shownText(popup, "TitleFrame")
@@ -2852,6 +2897,13 @@ local function navActivate()
         pcall(nav.muteGameEnter)                -- before: the action may close screens
         menuState.touch()
         pcall(dest[2])
+        return
+    end
+    if liveMenu("popup_name_entry") then
+        -- The game saves the name on Enter itself (PopupMonsterNameEntry
+        -- doKeyActions); pressing a focused button too would fight it.
+        menuState.nameText = nil
+        say("Saving the name", true)
         return
     end
     if not navEnsure() then return end

@@ -6,6 +6,7 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ### Fixed
 
+- Renaming a monster (the tutorial asks you to rename your Noggin) wasn't findable: the rename button is the name plate at the top of the monster's info screen, and it only read as the monster's name. It now says "Rename, now called Noggin". The name box says what it is and the current name, speaks each letter you type or delete, and Enter saves the name.
 - On some computers, tapping things on the island did nothing at all, so for example the Nursery could not be tapped at the tutorial step "Place the Monster". The mod used to tap by moving the mouse and clicking; it now hands the tap straight to the game's own touch handling, the way a real click arrives, so display scaling, other windows and where your mouse is no longer matter. If a game update moves that code, the mod falls back to clicking.
 - On some screen shapes (for example 1280 by 800), tapping the Nursery in the tutorial step "Place the Monster" did nothing: the mod clicked just above the egg. When a click selects nothing and opens nothing, the mod now tries the next spot on the object, starting with its centre, and stops as soon as something opens.
 - Hatching an egg opens a screen that says "The egg is ready! Click it to crack it open!", and the egg itself was not something you could Tab to. In the tutorial that screen has no other way out, so you were stuck. The egg is now an item: press Enter on it and the mod taps it until it cracks open, then Tab to Continue.
