@@ -4,6 +4,10 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.3-alpha - 2026-11-05
+
 ### Fixed
 
 - Pressing Tab right after opening the Market (or anything else that switches screens) no longer freezes and crashes the game.
