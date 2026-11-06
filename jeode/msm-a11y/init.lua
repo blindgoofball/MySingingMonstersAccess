@@ -1179,6 +1179,25 @@ local pending = {}
 local function later(seconds, fn)
     pending[#pending + 1] = { t = clock() + seconds, fn = fn }
 end
+
+-- Tap a point of the game window, (fx, fy) in 0..1. Prefers the native
+-- a11y_touch, which calls the game's own mouse handler (no Windows click, so
+-- display scaling, other windows or the real mouse can't get in the way):
+-- move there, press, and release a few frames later. Falls back to a real
+-- click when the handler couldn't be found (a game update).
+function menuState.tap(fx, fy)
+    local touch = resolve("a11y_touch")
+    if type(touch) == "function" then
+        local ok, sent = pcall(touch, fx, fy, 2)
+        if ok and sent then
+            pcall(touch, fx, fy, 1)
+            later(0.05, function() pcall(touch, fx, fy, 0) end)
+            return true
+        end
+    end
+    if type(clickFraction) == "function" then clickFraction(fx, fy) return true end
+    return false
+end
 -- An action with p.perRoot runs once for each menu that ticks after its time
 -- (it gets that menu's live root) until p.stop; anything else runs once.
 local function runPending(now, root)
@@ -1577,7 +1596,7 @@ local TAP_CHECK_SECONDS = 0.45
 -- screen as a miss (it hit empty ground), and try the next point.
 local function tapEntity(entity, name, wantKey, reselect, done, untilSomething)
     if not entity then say("Can't find " .. name, true) if done then done(false) end return end
-    if type(clickFraction) ~= "function" then say("Click function unavailable", true) return end
+    if type(clickFraction) ~= "function" and not resolve("a11y_touch") then say("Click function unavailable", true) return end
     local ok, err = pcall(function() game.worldContext():zoomCameraToObject(entity, TAP_ZOOM, TAP_SECONDS) end)
     if not ok then
         -- Camera didn't move: a click would hit whatever is mid-screen.
@@ -1588,7 +1607,7 @@ local function tapEntity(entity, name, wantKey, reselect, done, untilSomething)
     local function try(i)
         local pt = TAP_POINTS[i]
         local clickedAt = clock()
-        clickFraction(pt[1], pt[2])
+        menuState.tap(pt[1], pt[2])
         later(TAP_CHECK_SECONDS, function()
             local got = selectionKey()
             -- A miss is something else getting selected (a tree in front),
@@ -3337,7 +3356,7 @@ local function tutorialContinue()
         lastTutClick = -100
         if ok then say("Skipping tutorial", false) else say("Could not skip tutorial", true) end
     elseif type(clickFraction) == "function" then
-        clickFraction(CONTINUE_FX, CONTINUE_FY)
+        menuState.tap(CONTINUE_FX, CONTINUE_FY)
         lastTutClick = now
         say("Continue", false)
     else

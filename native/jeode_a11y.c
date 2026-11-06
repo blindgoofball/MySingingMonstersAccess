@@ -786,6 +786,109 @@ static void resolve_tile_getters(void)
     g_posY = resolve_pos_getter(base, "pos_y");
 }
 
+/* ---------------------------------------------------------------------------
+   Engine touch (a11y_touch). Tapping the island the way Hearthstone Access
+   does things: call the game's own code instead of synthesizing a Windows
+   click. The window procedure (5.7.4: RVA 0x92420) hands every mouse message
+   to one handler (RVA 0x928c0) that turns WM_LBUTTONDOWN / WM_LBUTTONUP into
+   the engine's sys::msg::MsgTouchDown / MsgTouchUp. Its convention is custom:
+   ECX = message, EDX = wParam, one stack arg = lParam (client x | y << 16),
+   caller pops it. It scales x by engine+0xa0 / engine+0xa8 (render width /
+   window width) and y by +0xa4 / +0xac, where engine is a global pointer.
+
+   Both are found by byte pattern, not fixed addresses:
+     handler: "8b fa 89 bd ?? ?? ?? ?? 81 f9 00 02 00 00 0f 87" (mov edi,edx;
+              store; cmp ecx,0x200; ja) then back to the prologue
+              "53 8b dc 83 ec 08" right after 0xCC padding.
+     engine:  "8b 15 [addr] 8b 4b 08 0f bf c1 c1 e9 10 66 0f 6e 8a a8 00 00 00"
+              (mov edx,[engine]; lParam; movd xmm1,[edx+0xa8]).
+   Runs on the game thread (queue_lua), like the window procedure itself.
+   --------------------------------------------------------------------------- */
+static uintptr_t g_mouseFn = 0;
+static void    **g_enginePtr = NULL;
+static int       g_touchResolved = 0;
+
+static void resolve_touch(void)
+{
+    static const unsigned char hpat[] = { 0x8b,0xfa,0x89,0xbd,0,0,0,0,0x81,0xf9,0x00,0x02,0x00,0x00,0x0f,0x87 };
+    static const char hmask[] = "xxxx????xxxxxxxx";
+    static const unsigned char epat[] = { 0x8b,0x15,0,0,0,0,0x8b,0x4b,0x08,0x0f,0xbf,0xc1,0xc1,0xe9,0x10,
+                                          0x66,0x0f,0x6e,0x8a,0xa8,0x00,0x00,0x00 };
+    static const char emask[] = "xx????xxxxxxxxxxxxxxxxx";
+    uintptr_t base = (uintptr_t)GetModuleHandleA(NULL), start = 0, hit, e;
+    size_t size = 0;
+    int k;
+    g_touchResolved = 1;
+    if (!base || !get_text_range(base, &start, &size)) return;
+    hit = pattern_scan(start, size, hpat, hmask, sizeof(hpat));
+    if (!hit) { A11Y_Log("touch: mouse handler pattern not found"); return; }
+    for (k = 0x20; k <= 0x80; k++) {
+        const unsigned char *p = (const unsigned char *)(hit - k);
+        if (p[0] == 0x53 && p[1] == 0x8b && p[2] == 0xdc && p[3] == 0x83 && p[4] == 0xec && p[5] == 0x08
+            && p[-1] == 0xCC) {
+            g_mouseFn = hit - k;
+            break;
+        }
+    }
+    if (!g_mouseFn) { A11Y_Log("touch: mouse handler prologue not found near RVA 0x%x", (unsigned)(hit - base)); return; }
+    e = pattern_scan(start, size, epat, emask, sizeof(epat));
+    if (!e) { A11Y_Log("touch: engine global pattern not found"); g_mouseFn = 0; return; }
+    g_enginePtr = *(void ***)(e + 2);
+    if (IsBadReadPtr(g_enginePtr, sizeof(void *))) { g_enginePtr = NULL; g_mouseFn = 0; return; }
+    A11Y_Log("touch: mouse handler at RVA 0x%x, engine global at 0x%p",
+             (unsigned)(g_mouseFn - base), (void *)g_enginePtr);
+}
+
+static void call_mouse_handler(uintptr_t fn, unsigned msg, unsigned wp, unsigned lp)
+{
+    __asm {
+        push lp
+        mov  edx, wp
+        mov  ecx, msg
+        call fn
+        add  esp, 4
+    }
+}
+
+/* a11y_touch(fx, fy, phase) -> true if sent. phase: 1 = press, 0 = release,
+   2 = move. (fx, fy) are fractions of the game window. */
+static int JEODE_CALL j_a11y_touch(void *L)
+{
+    lua_State *ls = (lua_State *)L;
+    double fx = lua_tonumber(ls, 1), fy = lua_tonumber(ls, 2);
+    int phase = (int)lua_tonumber(ls, 3);
+    static int loggedSizes = 0;
+    char *engine;
+    int gw, gh, ww, wh, x, y;
+    unsigned msg, wp, lp;
+    if (!g_touchResolved) resolve_touch();
+    if (!g_mouseFn || !g_enginePtr) { lua_pushboolean(ls, 0); return 1; }
+    engine = (char *)*g_enginePtr;
+    if (!engine || IsBadReadPtr(engine + 0xa0, 0x10)) { lua_pushboolean(ls, 0); return 1; }
+    gw = *(int *)(engine + 0xa0); gh = *(int *)(engine + 0xa4);
+    ww = *(int *)(engine + 0xa8); wh = *(int *)(engine + 0xac);
+    if (!loggedSizes) {
+        RECT rc = { 0, 0, 0, 0 };
+        HWND hwnd = GetForegroundWindow();
+        if (hwnd) GetClientRect(hwnd, &rc);
+        A11Y_Log("touch: engine render %dx%d, engine window %dx%d, Windows client %ldx%ld",
+                 gw, gh, ww, wh, rc.right, rc.bottom);
+        loggedSizes = 1;
+    }
+    if (gw <= 0 || gh <= 0 || ww <= 0 || wh <= 0) { lua_pushboolean(ls, 0); return 1; }
+    /* Coordinates in the engine's own idea of the window: whatever Windows
+       reports, the handler maps these back onto its render size. */
+    x = (int)(fx * ww); y = (int)(fy * wh);
+    lp = ((unsigned)(y & 0xffff) << 16) | (unsigned)(x & 0xffff);
+    msg = phase == 1 ? 0x201 : phase == 0 ? 0x202 : 0x200;
+    wp  = phase == 1 ? MK_LBUTTON : 0;
+    call_mouse_handler(g_mouseFn, msg, wp, lp);
+    A11Y_Log("touch: %s at (%.2f,%.2f) -> engine window (%d,%d)",
+             phase == 1 ? "down" : phase == 0 ? "up" : "move", fx, fy, x, y);
+    lua_pushboolean(ls, 1);
+    return 1;
+}
+
 /* a11y_entity_tile(entity) -> x, y   (nil if unavailable) */
 static int JEODE_CALL j_a11y_entity_tile(void *L)
 {
@@ -925,6 +1028,7 @@ JEODE_EXPORT int JEODE_CALL jeode_native_init(const struct JeodeNativeAPI *api)
     api->register_global("a11y_is_active", j_a11y_is_active);
     api->register_global("a11y_log",       j_a11y_log);
     api->register_global("a11y_click_fraction", j_a11y_click_fraction);
+    api->register_global("a11y_touch", j_a11y_touch);
     api->register_global("a11y_drag", j_a11y_drag);
     api->register_global("a11y_press_escape", j_a11y_press_escape);
     api->register_global("a11y_tutorial_step",  j_a11y_tutorial_step);
