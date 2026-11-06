@@ -1854,17 +1854,22 @@ end
 -- Tutorial target. The banner always names what to tap ("Collect the Treats",
 -- "Click on the Egg...", "Feed your Noggin..."). Map its words to an island
 -- object so one key (or the first Tab entry) taps the right thing.
--- Rules are checked in order: "Egg ... Nursery" must pick the breeding
--- structure that holds the egg, not the nursery.
+-- Rules are checked in order, against the game's own tutorial lines (en.utf8):
+-- "Click on the Egg to transfer it to the Nursery" is the egg sitting in the
+-- Breeding Structure; "Wait for the egg to hatch", "Speed up the hatching of
+-- your Mammott egg" and "Monster eggs incubate in the Nursery" are the Nursery,
+-- so hatching wins over the bare word "egg".
 -- ---------------------------------------------------------------------------
 local TUTORIAL_TARGETS = {
+    { "transfer it to the nursery", "breeding" },
+    { "place the monster", "nursery" },
+    { "hatch",             "nursery" },
+    { "incubat",           "nursery" },
+    { "nursery",           "nursery" },
     { "egg",               "breeding" },
     { "treat",             "bakery" },
     { "cookie",            "bakery" },
     { "bak",               "bakery" },
-    { "place the monster", "nursery" },
-    { "hatch",             "nursery" },
-    { "nursery",           "nursery" },
     { "breed",             "breeding" },
     { "castle",            "castle" },
 }

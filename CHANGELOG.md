@@ -2,6 +2,12 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## Unreleased
+
+### Fixed
+
+- Tutorial steps about the egg hatching ("Wait for the egg to hatch", "Speed up the hatching of your Mammott egg") pointed at the Breeding Structure instead of the Nursery, because they mention the egg. They now point at the Nursery. "Click on the Egg to transfer it to the Nursery" still points at the Breeding Structure, where that egg is.
+
 ## 0.1.6-alpha - 2026-11-06
 
 ### Added
