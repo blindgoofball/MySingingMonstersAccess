@@ -1055,13 +1055,17 @@ local MENU_FRESH_SECONDS = 0.5
 local menus = {}   -- file name -> { root, t, frame, rootName, countdown }
 -- Which roots are safe to touch. A screen can be freed at any moment (pressing
 -- Market swaps the whole island for the store), and touching a freed element
--- crashes the game outright. So a root counts only if its menu ticked in the
--- current frame, and after the mod last pressed anything.
+-- crashes the game outright. So a root counts only if its menu ticked after
+-- the mod last pressed anything, and hasn't missed its own usual tick: screens
+-- don't all tick every frame (the map doesn't), so each one's interval is
+-- learned. "Missed" is measured against the newest tick of any menu, not the
+-- clock, so one slow frame doesn't hide every screen.
 -- (A table, not locals: the main chunk is at Lua's 200-local limit.)
-local menuState = { announceFrames = 4, frame = 0, activated = -100 }
+local menuState = { announceFrames = 4, activated = -100, lastTick = -100 }
 function menuState.usable(m)
-    return m ~= nil and m.root ~= nil and m.frame == menuState.frame and m.t > menuState.activated
-        and clock() - m.t <= MENU_FRESH_SECONDS
+    if m == nil or m.root == nil or m.t <= menuState.activated then return false end
+    if clock() - m.t > MENU_FRESH_SECONDS then return false end
+    return menuState.lastTick - m.t <= 1.5 * (m.gap or 0.05) + 0.004
 end
 -- Call right before pressing, selecting or opening anything.
 function menuState.touch() menuState.activated = clock() end
@@ -1115,10 +1119,16 @@ local function menuTick(root, file)
         menus[file] = m
         a11y_log("[menu] live: " .. file .. " (root " .. rn .. ")")
     end
-    -- A new frame has begun when a menu ticks again (and time has passed: two
-    -- copies of one screen can tick in the same frame).
-    if m.frame == menuState.frame and now - m.t >= 0.004 then menuState.frame = menuState.frame + 1 end
-    m.frame = menuState.frame
+    -- Learn this screen's tick interval: the longest recent gap, slowly
+    -- forgotten. (Two copies of one screen can tick in the same frame: ignore
+    -- tiny gaps.)
+    local gap = now - m.t
+    if gap > MENU_FRESH_SECONDS then
+        m.gap = nil
+    elseif gap > 0.002 then
+        m.gap = math.max(gap, (m.gap or gap) * 0.9)
+    end
+    menuState.lastTick = now
     if now - m.t > MENU_FRESH_SECONDS then                -- (re)appeared
         m.countdown, m.appeared, m.opened, m.panel = menuState.announceFrames, now, now, nil
     end
@@ -2849,10 +2859,10 @@ local function tutHint(root, menu)
 end
 
 local function tutLive()
-    -- Same rule as menus: ticked this frame (or the last: the tutorial ticks on
-    -- its own schedule) and since the mod last pressed anything.
+    -- Like menus: ticked recently compared with the other screens, and since
+    -- the mod last pressed anything.
     return tut.root ~= nil and (clock() - tut.lastTick) <= TUT_FRESH_SECONDS
-        and (tut.frame or -1) >= menuState.frame - 1 and tut.lastTick > menuState.activated
+        and menuState.lastTick - tut.lastTick <= 0.1 and tut.lastTick > menuState.activated
 end
 
 local TUT_DEBUG = false   -- true: log raw tutorial menu state ([tutprobe]/[tuthb]/[tutswig])
@@ -2958,7 +2968,6 @@ end
 
 local function tutTick(root, menu)
     tut.roots[menu] = root
-    tut.frame = menuState.frame
     if TUT_DEBUG then
         pcall(tutProbe, root, menu)
         pcall(tutHeartbeat, menu, clock())
@@ -3462,6 +3471,10 @@ local function dumpUI()
 
     -- Every menu currently ticking (captured by the XML overrides' A11yHook).
     for file, m in pairs(menus) do
+        if clock() - m.t <= 5 then
+            a11y_log(string.format("-- menu timing: %s gap=%.3f lag=%.3f age=%.3f usable=%s", file, m.gap or -1,
+                menuState.lastTick - m.t, clock() - m.t, tostring(menuState.usable(m))))
+        end
         if menuState.usable(m) and file ~= "hud" then
             a11y_log("-- LIVE MENU TREE (" .. file .. ", root " .. tostring(m.rootName) .. ") --")
             dumpElement(m.root, 0, { n = 400 })
