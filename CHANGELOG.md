@@ -8,6 +8,8 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 - The Map showed only Close and Help most of the time (since 0.1.3-alpha): the islands are back. The crash fix in 0.1.3-alpha expected every screen to refresh every frame, and the map doesn't.
 - The "Welcome to" screen after getting a new island had no way to continue. It now has a Continue item, and Escape continues too.
+- After placing a decoration you were stuck on a screen with only Show Grid. The game selects the new decoration and opens its Decoration Size panel; Tab now offers the decoration's own buttons (Info, Sell, Move, Buy more) plus Show Grid, and Escape deselects it and closes the panel.
+- When an arrow key didn't move the object being placed, every later arrow press missed too. Now it says "Did not move", and the next press re-centres on the object first.
 
 ### Improved
 

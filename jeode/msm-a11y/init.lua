@@ -1073,7 +1073,10 @@ local menus = {}   -- file name -> { root, t, frame, rootName, countdown }
 -- learned. "Missed" is measured against the newest tick of any menu, not the
 -- clock, so one slow frame doesn't hide every screen.
 -- (A table, not locals: the main chunk is at Lua's 200-local limit.)
-local menuState = { announceFrames = 4, activated = -100, lastTick = -100 }
+local menuState = { announceFrames = 4, activated = -100, lastTick = -100,
+    -- Panels that open alongside placing or a selected decoration (Show Grid,
+    -- Decoration Size). Never a screen of their own, and they can linger.
+    sidePanels = { showgrid_popup = true, scale_popup = true } }
 function menuState.usable(m)
     if m == nil or m.root == nil or m.t <= menuState.activated then return false end
     if clock() - m.t > MENU_FRESH_SECONDS then return false end
@@ -1086,6 +1089,7 @@ function menuState.touch() menuState.activated = clock() end
 local function selfAnnounced(file)
     return file:find("^popup_tutorial") or file == "tutorial" or file == "hud" or file == "contextbar"
         or file == "empty" or file == "load_fade" or file == "store_categoryselect"
+        or menuState.sidePanels[file]
 end
 
 -- Actions to run a little later on the game thread (after the camera moves,
@@ -1200,7 +1204,7 @@ local function menuTick(root, file)
             -- its confirmation is up, so also accept the newest open screen.
             local newest = true
             for f, o in pairs(menus) do
-                if f ~= file and not PERSISTENT_MENUS[f] and not f:find("^popup_tutorial") and f ~= "showgrid_popup"
+                if f ~= file and not PERSISTENT_MENUS[f] and not f:find("^popup_tutorial") and not menuState.sidePanels[f]
                     and now - o.t <= MENU_FRESH_SECONDS and o.content ~= 0 and (o.appeared or 0) > (m.appeared or 0) then
                     newest = false
                 end
@@ -1234,7 +1238,7 @@ local function topOverlay()
     for file, m in pairs(menus) do
         -- showgrid_popup (the Show Grid toggle) can linger after placing or
         -- cancelling; it only belongs to placement, never a screen of its own.
-        if not PERSISTENT_MENUS[file] and not file:find("^popup_tutorial") and file ~= "showgrid_popup"
+        if not PERSISTENT_MENUS[file] and not file:find("^popup_tutorial") and not menuState.sidePanels[file]
             and (m.appeared or 0) >= since
             and m.content ~= 0
             and menuState.usable(m) and (not best or (m.appeared or 0) > (best.appeared or 0)) then
@@ -1992,6 +1996,14 @@ local function arrow(dx, dy)
         placeAt.x, placeAt.y, placeAt.t = nx - TAP_FX, ny - TAP_FY, clock()
         later(DRAG_SETTLE_SECONDS, function()
             local ax, ay = selectedTile()
+            -- The drag missed the object: later drags would start from the
+            -- wrong spot too, so re-centre the camera on it next time.
+            if bx and ax and ax == bx and ay == by then
+                placeAt.t = -100
+                a11y_log("[place] drag did not move the object")
+                say("Did not move. " .. spotText(), true)
+                return
+            end
             if bx and ax then
                 calibrate(dx, dy, ax - bx, ay - by)
                 if screenSign.learn then screenSign.learn(dx * MOVE_STEP_X, dy * MOVE_STEP_Y, ax - bx, ay - by) end
@@ -2302,8 +2314,10 @@ local function navContext()
         -- Confirm / Cancel are world sprites: offer them as entries, plus the
         -- Show Grid toggle that opens alongside.
         local roots = {}
-        local grid = liveMenu("showgrid_popup")
-        if grid then roots[1] = grid end
+        for f in pairs(menuState.sidePanels) do
+            local r = liveMenu(f)
+            if r then roots[#roots + 1] = r end
+        end
         return roots, "placing", {
             { "Confirm placement", confirmPlacement },
             { "Check spot", function() say(spotText(), true) end },
@@ -2311,8 +2325,9 @@ local function navContext()
         }
     end
     -- After placing or cancelling, the Show Grid toggle can stay reported as the
-    -- top popup. Outside placement it is not a screen: show the island.
-    local gridLeftover = currentPopupName() == "showgrid_popup"
+    -- top popup, and a selected decoration brings its Decoration Size panel.
+    -- Outside placement they are not screens: show the island or selection.
+    local gridLeftover = menuState.sidePanels[currentPopupName()]
     if not popupOpen() or gridLeftover then
         popupStack = {}
         local ov, ovName = topOverlay()
@@ -2326,7 +2341,12 @@ local function navContext()
                 { "Tap " .. name, tapSelected },
                 { "Deselect " .. name, deselect },
             }
-            return { cb }, "selected:" .. name, virtual
+            -- Its bar (Info, Sell, Move...) plus a Decoration Size / Show Grid panel.
+            local roots = {}
+            if cb then roots[#roots + 1] = cb end
+            local sp = liveMenu("scale_popup")
+            if sp then roots[#roots + 1] = sp end
+            return roots, "selected:" .. name, virtual
         end
         -- Nothing selected: main bar (Market, Options...), the HUD, then the
         -- island's structures and monsters, so Tab alone reaches everything.
@@ -2774,6 +2794,17 @@ local function doBack()
     if currentPopupName() == "showgrid_popup" then        -- leftover from placing
         closeGridPopup()
         say("Back to the island", true)
+        return
+    end
+    -- A selected decoration's Decoration Size panel: deselect, and close the
+    -- panel if the game leaves it behind.
+    if currentPopupName() == "scale_popup" then
+        if objectSelected() then deselect() else say("Back to the island", true) end
+        later(0.3, function()
+            if currentPopupName() == "scale_popup" and not objectSelected() and not placing() then
+                pcall(game.popPopUp)
+            end
+        end)
         return
     end
     local onScreen = popupOpen() or topOverlay() ~= nil
