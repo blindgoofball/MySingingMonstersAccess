@@ -333,62 +333,37 @@ static int JEODE_CALL j_a11y_log(void *L)
     return 0;
 }
 
-/* a11y_click_fraction(fx, fy) : a left click at (fx,fy) of the game window's
-   client area, 0..1 (island taps, C++-drawn tutorial dialogs). Done on its own
-   thread with short pauses, like a11y_drag: moving the cursor, pressing,
-   releasing and moving it back in one instant raced Windows' input thread,
-   and on slower PCs the click landed wherever the real mouse was (a friend's
-   Nursery tap in the tutorial never hit). Only fires if the game is
-   foreground; skipped while a drag is running. */
-#define CLICK_SETTLE_MS 30
-#define CLICK_HOLD_MS   50
-
-typedef struct { double fx, fy; } ClickJob;
-
-static unsigned __stdcall ClickProc(void *param)
-{
-    ClickJob job = *(ClickJob *)param;
-    HWND hwnd = GetForegroundWindow();
-    DWORD pid = 0;
-    POINT pt, saved;
-    free(param);
-
-    if (hwnd) GetWindowThreadProcessId(hwnd, &pid);
-    if (!hwnd || pid != GetCurrentProcessId() || !client_point(hwnd, job.fx, job.fy, &pt)) {
-        InterlockedExchange(&g_dragBusy, 0);
-        return 0;
-    }
-    GetCursorPos(&saved);
-    SetCursorPos(pt.x, pt.y);
-    Sleep(CLICK_SETTLE_MS);
-    mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, 0);
-    Sleep(CLICK_SETTLE_MS);
-    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-    Sleep(CLICK_HOLD_MS);
-    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-    Sleep(CLICK_HOLD_MS);
-    SetCursorPos(saved.x, saved.y);
-    A11Y_Log("click_fraction (%.2f,%.2f) -> screen (%ld,%ld)", job.fx, job.fy, pt.x, pt.y);
-    InterlockedExchange(&g_dragBusy, 0);
-    return 0;
-}
-
+/* a11y_click_fraction(fx, fy) : synthesize a left mouse click at (fx,fy) of the
+   game window's client area, 0..1. Used for C++-drawn tutorial dialogs that
+   have no reachable UI element -- we click their button by screen position.
+   Restores the cursor afterwards. Only fires if the game is foreground. */
 static int JEODE_CALL j_a11y_click_fraction(void *L)
 {
     lua_State *ls = (lua_State *)L;
-    ClickJob *job;
-    HANDLE th;
-    if (InterlockedCompareExchange(&g_dragBusy, 1, 0) != 0) {
-        A11Y_Log("click_fraction skipped: a drag or click is still running");
-        return 0;
-    }
-    job = (ClickJob *)malloc(sizeof(ClickJob));
-    if (!job) { InterlockedExchange(&g_dragBusy, 0); return 0; }
-    job->fx = lua_tonumber(ls, 1);
-    job->fy = lua_tonumber(ls, 2);
-    th = (HANDLE)_beginthreadex(NULL, 0, ClickProc, job, 0, NULL);
-    if (!th) { free(job); InterlockedExchange(&g_dragBusy, 0); return 0; }
-    CloseHandle(th);
+    double fx = lua_tonumber(ls, 1);
+    double fy = lua_tonumber(ls, 2);
+    HWND hwnd;
+    DWORD pid = 0;
+    RECT rc;
+    POINT pt, saved;
+
+    hwnd = GetForegroundWindow();
+    if (!hwnd) return 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid != GetCurrentProcessId()) return 0;
+
+    if (!GetClientRect(hwnd, &rc)) return 0;
+    pt.x = (LONG)(rc.right  * fx);
+    pt.y = (LONG)(rc.bottom * fy);
+    ClientToScreen(hwnd, &pt);
+
+    GetCursorPos(&saved);
+    SetCursorPos(pt.x, pt.y);
+    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+    SetCursorPos(saved.x, saved.y);
+
+    A11Y_Log("click_fraction (%.2f,%.2f) -> screen (%ld,%ld)", fx, fy, pt.x, pt.y);
     return 0;
 }
 

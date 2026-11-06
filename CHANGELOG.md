@@ -6,7 +6,6 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ### Fixed
 
-- On some computers, the mod's clicks on island objects did nothing, so for example the Nursery could not be tapped to hatch the egg in the tutorial ("Place the Monster"). The mod moved the mouse, clicked and moved it back all at once, and Windows sometimes handled the click after the mouse had already moved back. Clicks now pause briefly at each step, like a real click.
 - Hatching an egg opens a screen that says "The egg is ready! Click it to crack it open!", and the egg itself was not something you could Tab to. In the tutorial that screen has no other way out, so you were stuck. The egg is now an item: press Enter on it and the mod taps it until it cracks open, then Tab to Continue.
 - Tapping the Nursery (or anything that opens a screen when tapped) said "If nothing happened, the click missed" over the top of the screen that had just opened. It now lets that screen speak.
 
