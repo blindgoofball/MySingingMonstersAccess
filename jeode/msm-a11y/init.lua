@@ -972,8 +972,19 @@ local PERSISTENT_MENUS = { hud = true, contextbar = true, tutorial = true, empty
 local DIALOG_BUTTONS = { "YesButton", "NoButton", "OkayButton", "OkButton", "BuyButton", "ConfirmButton",
                          "CancelButton", "CloseButton", "PurchaseButton" }
 local MENU_FRESH_SECONDS = 0.5
-local MENU_ANNOUNCE_FRAMES = 4     -- let the menu fill its text before reading it
-local menus = {}   -- file name -> { root, t, rootName, countdown }
+local menus = {}   -- file name -> { root, t, frame, rootName, countdown }
+-- Which roots are safe to touch. A screen can be freed at any moment (pressing
+-- Market swaps the whole island for the store), and touching a freed element
+-- crashes the game outright. So a root counts only if its menu ticked in the
+-- current frame, and after the mod last pressed anything.
+-- (A table, not locals: the main chunk is at Lua's 200-local limit.)
+local menuState = { announceFrames = 4, frame = 0, activated = -100 }
+function menuState.usable(m)
+    return m ~= nil and m.root ~= nil and m.frame == menuState.frame and m.t > menuState.activated
+        and clock() - m.t <= MENU_FRESH_SECONDS
+end
+-- Call right before pressing, selecting or opening anything.
+function menuState.touch() menuState.activated = clock() end
 
 -- Menus with their own announcer (tutorial hook) or that are always on screen.
 local function selfAnnounced(file)
@@ -1024,8 +1035,12 @@ local function menuTick(root, file)
         menus[file] = m
         a11y_log("[menu] live: " .. file .. " (root " .. rn .. ")")
     end
+    -- A new frame has begun when a menu ticks again (and time has passed: two
+    -- copies of one screen can tick in the same frame).
+    if m.frame == menuState.frame and now - m.t >= 0.004 then menuState.frame = menuState.frame + 1 end
+    m.frame = menuState.frame
     if now - m.t > MENU_FRESH_SECONDS then                -- (re)appeared
-        m.countdown, m.appeared, m.opened, m.panel = MENU_ANNOUNCE_FRAMES, now, now, nil
+        m.countdown, m.appeared, m.opened, m.panel = menuState.announceFrames, now, now, nil
     end
     -- Some screens stay loaded once used and get reused: the confirmation
     -- popup keeps ticking with nothing in it, and a new "Would you like to
@@ -1060,7 +1075,7 @@ local function menuTick(root, file)
             return false
         end
         if newest and now - (m.opened or now) > 1 and isDialog(newest) then
-            m.countdown, m.appeared, m.panel = MENU_ANNOUNCE_FRAMES, now, newest
+            m.countdown, m.appeared, m.panel = menuState.announceFrames, now, newest
             a11y_log("[menu] new panel in " .. file .. ": " .. newest)
         end
         if m.panel and not shown[m.panel] then m.panel = nil end
@@ -1120,7 +1135,7 @@ local function topOverlay()
         if not PERSISTENT_MENUS[file] and not file:find("^popup_tutorial") and file ~= "showgrid_popup"
             and (m.appeared or 0) >= since
             and m.content ~= 0
-            and now - m.t <= MENU_FRESH_SECONDS and (not best or (m.appeared or 0) > (best.appeared or 0)) then
+            and menuState.usable(m) and (not best or (m.appeared or 0) > (best.appeared or 0)) then
             best, bestFile = m, file
         end
     end
@@ -1133,11 +1148,10 @@ end
 
 -- Fresh root for a menu, by file name or by root element name.
 local function liveMenu(name)
-    local now = clock()
     local m = menus[name]
-    if m and now - m.t <= MENU_FRESH_SECONDS then return m.root end
+    if menuState.usable(m) then return m.root end
     for _, mm in pairs(menus) do
-        if mm.rootName == name and now - mm.t <= MENU_FRESH_SECONDS then return mm.root end
+        if mm.rootName == name and menuState.usable(mm) then return mm.root end
     end
     return nil
 end
@@ -2386,6 +2400,7 @@ end
 -- buttons; list rows like bakery foods only answer the game's own keyboard
 -- path (template_barbutton's gotMsgKeyUp), DoStoredScript on the Touch.
 local function pressElement(el)
+    menuState.touch()                           -- the press may free this screen
     local ok, err = pcall(function()
         el.Touch:onTouchDown(el, 0, 0)
         el.Touch:onTouchUp(el, 0, 0)
@@ -2436,7 +2451,7 @@ function nav.muteGameEnter(skip)
     local now, ids, count = clock(), {}, 0
     local skipId = skip and tostring(skip)
     for _, m in pairs(menus) do
-        if m.root and now - m.t < 0.1 then
+        if menuState.usable(m) then
             eachEnterButton(m.root, confirmKey, function(el)
                 if tostring(el) == skipId then return end
                 pcall(function() el("buttonDown"):SetInt(0) end)
@@ -2470,6 +2485,7 @@ local function navActivate()
         vmenu.active = false
         if vmenu.kind == "places" then say("Opening " .. dest[1], false) end
         pcall(nav.muteGameEnter)                -- before: the action may close screens
+        menuState.touch()
         pcall(dest[2])
         return
     end
@@ -2479,6 +2495,7 @@ local function navActivate()
     local label = nav.labels[nav.index] or "item"
     if type(el) == "table" and el.virtual then
         pcall(nav.muteGameEnter)
+        menuState.touch()
         pcall(el.virtual)
         return
     end
@@ -2715,7 +2732,10 @@ local function tutHint(root, menu)
 end
 
 local function tutLive()
+    -- Same rule as menus: ticked this frame (or the last: the tutorial ticks on
+    -- its own schedule) and since the mod last pressed anything.
     return tut.root ~= nil and (clock() - tut.lastTick) <= TUT_FRESH_SECONDS
+        and (tut.frame or -1) >= menuState.frame - 1 and tut.lastTick > menuState.activated
 end
 
 local TUT_DEBUG = false   -- true: log raw tutorial menu state ([tutprobe]/[tuthb]/[tutswig])
@@ -2821,6 +2841,7 @@ end
 
 local function tutTick(root, menu)
     tut.roots[menu] = root
+    tut.frame = menuState.frame
     if TUT_DEBUG then
         pcall(tutProbe, root, menu)
         pcall(tutHeartbeat, menu, clock())
@@ -3324,7 +3345,7 @@ local function dumpUI()
 
     -- Every menu currently ticking (captured by the XML overrides' A11yHook).
     for file, m in pairs(menus) do
-        if clock() - m.t <= MENU_FRESH_SECONDS and file ~= "hud" then
+        if menuState.usable(m) and file ~= "hud" then
             a11y_log("-- LIVE MENU TREE (" .. file .. ", root " .. tostring(m.rootName) .. ") --")
             dumpElement(m.root, 0, { n = 400 })
         end
