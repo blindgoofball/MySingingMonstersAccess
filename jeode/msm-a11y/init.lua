@@ -1937,6 +1937,93 @@ function FRIENDLY.__storePrice(item, lbl)
     return lbl
 end
 
+-- What a monster looks like (Control+Shift+I with a monster selected).
+-- Written from the game's own portraits (gfx/breeding/monster_portrait_
+-- square_<code>), keyed by the portrait code game.getPortraitName gives for
+-- the monster type. The natural monsters' codes are their elements: a Air,
+-- b Plant, c Earth, d Water, e Cold. Rare and Epic portraits share the
+-- common one's description.
+FRIENDLY.__looks = {
+    a = "A purple bird with big yellow eyes, an orange beak, a tuft of orange feathers on its head and wide purple wings.",
+    ab = "A huge round puff of white fluffy fur, with a yellow duck-like bill and big blue-rimmed eyes peeking out.",
+    abc = "A lime-green furry creature with a sleepy grin and four wooden pipes, like recorders, sticking up from its back.",
+    abcd = "A purple octopus-like creature with a frilly fin by each ear, holding drumsticks.",
+    abcde = "A bird with a pale, skull-like head, one big green eye, a hooked grey beak and a crest of bright green, blue and yellow feathers.",
+    abce = "A cluster of grey stone heads stacked like a little rock tower, each with a round hole for a mouth and patches of green moss.",
+    abd = "A round lime-green blob with small eyes on top of its head and a round O-shaped mouth, as if singing one long note.",
+    abde = "A tall light-blue creature with a big black speaker set into its forehead, purple headphones and a worried, wide mouth.",
+    abe = "Two round fuzzy balls, one pink and one brown, each with big yellow eyes and a toothy grin.",
+    ac = "A round tan creature with one big green eye, a riveted metal rim around its wide toothy mouth and a small antenna on top.",
+    acd = "A fuzzy blue creature with big orange-rimmed eyes, two short yellow horns and purple and blue striped legs.",
+    acde = "An orange furry creature with a mop of red hair and a small round mouth, playing a green electric guitar.",
+    ace = "A tall pink creature with a bow on its head, big eyes and an open, smiling purple mouth, holding a bright pink fluffy pom-pom.",
+    ad = "Two tall blue-green birds side by side, each with a long pale beak and a purple crest.",
+    ade = "An orange creature with two tall eye stalks, a wide smile and little bumps all over its skin.",
+    ae = "A dark purple, penguin-like bird with a red scarf and an orange and grey beak with icicles dripping from it.",
+    b = "A green, bulb-shaped plant creature with lighter green spots, a huge open mouth full of teeth and leafy vines around it.",
+    bc = "A creature made of wood, with a round green leafy head, big eyes, a little yellow flower and long branch-like arms.",
+    bcd = "A pale blue creature with yellow eyes on top, a huge pink-rimmed mouth with a swirly tongue, waving one hand.",
+    bcde = "A yellow-green creature in a coat of leaves, with a huge open mouth and a big curled wooden horn on its head.",
+    bce = "A green creature hiding under a golden cymbal like a hat, with only its eyes peeking out and a curly green stalk on top.",
+    bd = "A tree-trunk creature with a carved wooden face, big orange eyes and a bushy green treetop for hair.",
+    bde = "A pale blue furry creature playing a big wooden stringed instrument with a bow, like a cello.",
+    be = "A bright green furry creature with big mismatched eyes, a sharp-toothed mouth and a little stalk on its head.",
+    c = "A grey stone block with green eyes and two pale hands resting on top of its head.",
+    cd = "A teal, frog-like creature with three yellow eyes, big pink lips and pink crystals growing on its head.",
+    cde = "A grey, stony creature like a rhino, with small horns, a pale blue eye and a golden mouthpiece.",
+    ce = "An orange-red furry creature with a tuft of red hair, a pale yellow belly, big eyes and drumsticks in its hands.",
+    d = "A light-blue, round blob with big green eyes on top and a wide, pink-lipped mouth.",
+    de = "A huge open mouth with a pink tongue and crooked teeth, ringed by purple lips, with pink and orange spines on top.",
+    e = "A white, furry, yeti-like creature with big yellow eyes and a huge grin full of square teeth.",
+    f = "A dark creature that is mostly a huge grin of square yellow teeth, with two glowing red eyes peeking over it.",
+    g = "A ghostly, see-through purple creature with golden eyes and a wide, fanged smile.",
+}
+FRIENDLY.__elementLetters = { a = "Air", b = "Plant", c = "Earth", d = "Water", e = "Cold" }
+function FRIENDLY.__appearance()
+    local isMonster = false
+    pcall(function() isMonster = game.selectedObjIsMonster() and true or false end)
+    if not isMonster then say("Select a monster first, then press Control Shift I", true) return end
+    local uid = nil
+    pcall(function() uid = game.selectedMonsterId() end)
+    local tid = nil
+    pcall(function() tid = game.GetMonster(uid):monsterTypeId() end)
+    if not tid then pcall(function() tid = game.selectedMonsterTypeId() end) end
+    local name = nil
+    pcall(function() name = cleanText(LOC(game.getMonsterData(tid):name())) end)
+    name = FRIENDLY.__withRarity(name or "This monster", tid)
+    -- Key the description by the monster's element letters (game.
+    -- monsterTypeGenes, same numbering as its name). The portrait codes are
+    -- built from those letters. getPortraitName's numbering didn't match the
+    -- type id (it gave other monsters' pictures), so it is only logged, via
+    -- the entity id, as a cross-check.
+    local genes = nil
+    pcall(function() genes = tostring(game.monsterTypeGenes(tid)) end)
+    local code = nil
+    pcall(function()
+        local v = game.getPortraitName(game.monsterTypeEntityId(tid))
+        code = v and tostring(v):match("([^/]+)$"):gsub("%.%w+$", "")
+    end)
+    a11y_log("[looks] type " .. tostring(tid) .. " genes " .. tostring(genes) .. " portrait by entity " .. tostring(code))
+    local base = genes and genes:lower():gsub("[^%a]", "")
+    if base then
+        local letters = {}
+        for ch in base:gmatch(".") do letters[#letters + 1] = ch end
+        table.sort(letters)
+        base = table.concat(letters)
+    end
+    if base and not base:find("^[a-g]+$") then base = nil end
+    local parts = { name }
+    local desc = base and FRIENDLY.__looks[base]
+    parts[#parts + 1] = desc or "No description yet"
+    if base and base:find("^[a-e]+$") then
+        local els = {}
+        for ch in base:gmatch(".") do els[#els + 1] = FRIENDLY.__elementLetters[ch] end
+        local list = #els == 1 and els[1] or (table.concat(els, ", ", 1, #els - 1) .. " and " .. els[#els])
+        parts[#parts + 1] = (#els == 1 and "Element: " or "Elements: ") .. list
+    end
+    say(joinSentences(parts), true)
+end
+
 -- Monster type id from its display name, or nil if unknown or shared.
 function POPUP_READERS.__typeByName(name)
     local map = POPUP_READERS.__names
@@ -4898,6 +4985,7 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
     jeode.registerGlobal("a11y_objects", openObjects)
     jeode.registerGlobal("a11y_arrow", arrow)
     jeode.registerGlobal("a11y_whatnow", whatNow)
+    jeode.registerGlobal("a11y_appearance", function() FRIENDLY.__appearance() end)
     jeode.registerGlobal("a11y_back", goBack)
     -- Comma and Period: free spots while placing, otherwise the same as
     -- Shift+Tab and Tab (Shift+Tab also opens the Steam overlay). Left alone

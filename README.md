@@ -95,6 +95,7 @@ Only needed if `install.bat` doesn't work for you.
 | Control+Shift+W | What now: things that are ready and your current goals. |
 | Control+Shift+M | Places: Market, Book of Monsters, Map, Goals, Friends, Mail, Options. |
 | Control+Shift+O | A list of everything on your island. |
+| Control+Shift+I | With a monster selected: what it looks like, and its elements. Descriptions are written from the game's own pictures and cover the natural monsters so far (Plant Island and the other early islands); more will be added. |
 | Control+Shift+C | Put the camera back on the whole island (the game's default view). |
 | Control+Shift+T | Repeat the current tutorial step. |
 | Control+Shift+Enter | Continue the tutorial. |

@@ -2,10 +2,15 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
-## Unreleased
+## 0.1.10-alpha - 2026-11-07
+
+### Added
+
+- Control+Shift+I with a monster selected says what it looks like, for example "A white, furry, yeti-like creature with big yellow eyes and a huge grin full of square teeth", and its elements. The descriptions are written from the game's own monster pictures, starting with the 31 natural monsters (Air, Plant, Earth, Water and Cold, and every mix of them). Rare and Epic versions use the common one's description for now.
 
 ### Improved
 
+- Comma, Period, the arrow keys and the brackets no longer wait a quarter of a second between presses, and Comma, Period and the arrows repeat when held, like Tab.
 - Comma and Period now move to the previous and next item everywhere, like Shift+Tab and Tab. Shift+Tab is also Steam's overlay key, so this avoids opening the overlay by accident. While placing they still step through free spots, and in a text box (renaming a monster) they type as normal.
 - Market prices say their currency, for example "Rare Noggin, 75 Diamonds" instead of "Rare Noggin, 75", so you know before buying whether something costs Coins, Diamonds, Shards, Relics or anything else. Sale items say "on sale, 500 Diamonds, was 1,000 Diamonds".
 - The Market's currency counters at the top only said "Currency" for anything other than Coins, Diamonds and Food. They now say which one, for example Keys, Relics, Shards, Starpower, Medals, Egg Wildcards or Minigame Tokens.

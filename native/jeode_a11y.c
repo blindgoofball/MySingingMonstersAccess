@@ -71,7 +71,7 @@ static int game_is_foreground(void)
    jeode.registerGlobal) and runs on the game thread through queue_lua -- a safe
    frame boundary. Nav handlers are silent when no real popup is open, so plain
    Tab/Enter during normal play are harmless no-ops. */
-enum { HK_HUD = 0, HK_NAV_NEXT, HK_NAV_PREV, HK_ACTIVATE, HK_MENU, HK_TUTORIAL, HK_TUTSTEP, HK_DUMP, HK_OBJECTS, HK_LEFT, HK_RIGHT, HK_UP, HK_DOWN, HK_WHATNOW, HK_ESCAPE, HK_BACKSPACE, HK_POI_PREV, HK_POI_NEXT, HK_SPOT_PREV, HK_SPOT_NEXT, HK_CAMERA, HK_HOME, HK_END, HK_COUNT };
+enum { HK_HUD = 0, HK_NAV_NEXT, HK_NAV_PREV, HK_ACTIVATE, HK_MENU, HK_TUTORIAL, HK_TUTSTEP, HK_DUMP, HK_OBJECTS, HK_LEFT, HK_RIGHT, HK_UP, HK_DOWN, HK_WHATNOW, HK_ESCAPE, HK_BACKSPACE, HK_POI_PREV, HK_POI_NEXT, HK_SPOT_PREV, HK_SPOT_NEXT, HK_CAMERA, HK_HOME, HK_END, HK_LOOKS, HK_COUNT };
 
 static const char *const g_hkLua[HK_COUNT] = {
     /* HK_HUD (Ctrl+Shift+A) */
@@ -116,6 +116,8 @@ static const char *const g_hkLua[HK_COUNT] = {
     /* HK_HOME / HK_END -- first / last item of the current list */
     "if type(a11y_navEdge)=='function' then a11y_navEdge(-1) end",
     "if type(a11y_navEdge)=='function' then a11y_navEdge(1) end",
+    /* HK_LOOKS (Ctrl+Shift+I) -- what the selected monster looks like */
+    "if type(a11y_appearance)=='function' then a11y_appearance() end",
 };
 
 static unsigned __stdcall HotkeyProc(void *param)
@@ -159,11 +161,18 @@ static unsigned __stdcall HotkeyProc(void *param)
         down[HK_CAMERA]    = ctrl && shift && KEY_DOWN('C');
         down[HK_HOME]      = !shift && !ctrl && KEY_DOWN(VK_HOME);
         down[HK_END]       = !shift && !ctrl && KEY_DOWN(VK_END);
+        down[HK_LOOKS]     = ctrl && shift && KEY_DOWN('I');
 
         for (i = 0; i < HK_COUNT; i++) {
-            /* Brackets and comma/period drag the object while placing: not here. */
-            int moving = i == HK_NAV_NEXT || i == HK_NAV_PREV || i == HK_HOME || i == HK_END;
-            int repeats = i == HK_NAV_NEXT || i == HK_NAV_PREV;
+            /* Keys that only move focus or the placing cursor (no game action):
+               short gap. Comma/period are also Shift+Tab/Tab, and arrows,
+               brackets and comma/period move the placing cursor instantly
+               (the old drag fallback refuses a drag while one is running). */
+            int moving = i == HK_NAV_NEXT || i == HK_NAV_PREV || i == HK_HOME || i == HK_END
+                || i == HK_SPOT_PREV || i == HK_SPOT_NEXT || i == HK_POI_PREV || i == HK_POI_NEXT
+                || i == HK_LEFT || i == HK_RIGHT || i == HK_UP || i == HK_DOWN;
+            int repeats = i == HK_NAV_NEXT || i == HK_NAV_PREV || i == HK_SPOT_PREV || i == HK_SPOT_NEXT
+                || i == HK_LEFT || i == HK_RIGHT || i == HK_UP || i == HK_DOWN;
             DWORD debounce = moving ? MOVE_DEBOUNCE_MS : HOTKEY_DEBOUNCE_MS;
             int fire = 0;
             if (down[i] && !prev[i]) {
