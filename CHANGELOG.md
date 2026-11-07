@@ -2,6 +2,22 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## Unreleased
+
+### Improved
+
+- Comma and Period now move to the previous and next item everywhere, like Shift+Tab and Tab. Shift+Tab is also Steam's overlay key, so this avoids opening the overlay by accident. While placing they still step through free spots, and in a text box (renaming a monster) they type as normal.
+- Market prices say their currency, for example "Rare Noggin, 75 Diamonds" instead of "Rare Noggin, 75", so you know before buying whether something costs Coins, Diamonds, Shards, Relics or anything else. Sale items say "on sale, 500 Diamonds, was 1,000 Diamonds".
+- The Market's currency counters at the top only said "Currency" for anything other than Coins, Diamonds and Food. They now say which one, for example Keys, Relics, Shards, Starpower, Medals, Egg Wildcards or Minigame Tokens.
+- The MEMORY button on the Castle says "free game ready" when the game marks a free Memory Game, or "no free game yet" when playing would cost Diamonds.
+- The Likes tab says which likes are met: each one is "met" with how far away it is, "too far" with the distance, or "not on your island", then how many are met, for example "1 of 3 met". The Monsters list says it too, for example "happiness 50%, 1 of 3 likes met". How close counts as met is still a guess (5 tiles) until it is measured against happiness.
+
+### Fixed
+
+- Amounts of one said the plural, for example "1 Keys" or "Got 1 diamonds". They now say "1 Key" and "Got 1 diamond", for every currency and for things like sticker packs and tokens.
+- Memory Game: Enter on a card said "Could not turn the card" and nothing turned. Cards are now tapped through the game's own touch input, the way the scratch ticket is played.
+- Memory Game cards read as picture codes like "square q05 rare". They now say the monster, with its rarity, or the currency (Coins, Diamonds, Food, XP). The second card of a pair says "Match" or "No match", matched cards say "matched", and Enter on a card that is already face up says so instead of wasting a turn.
+
 ## 0.1.9-alpha - 2026-11-07
 
 ### Added

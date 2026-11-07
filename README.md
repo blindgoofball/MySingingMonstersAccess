@@ -83,14 +83,14 @@ Only needed if `install.bat` doesn't work for you.
 
 | Key | What it does |
 | --- | --- |
-| Tab / Shift+Tab | Next / previous item on the current screen |
+| Tab / Shift+Tab | Next / previous item on the current screen. Period and Comma do the same, which helps because Shift+Tab also opens the Steam overlay. |
 | Enter | Press the current item |
 | Escape or Backspace | Go back: close the screen, cancel, answer No, or deselect. The game's own Escape is tried first. |
 | Home and End | Jump to the first or last item of the current list or screen. |
 | Left bracket and Right bracket | On the island: switch between groups (Buttons, Buildings, Monsters, Decorations, Trees and rocks). While placing an object: jump between nearby landmarks. |
 | Arrow keys | While placing an object: move the placing cursor one tile and hear the spot (free or blocked, what is nearby, Likes close by). Nothing moves in the game until you press Enter. |
 | Enter and Escape | While placing an object: Enter places it where the cursor is, Escape cancels. Tab says the spot again. |
-| Comma and Period | While placing an object, after a bracket: step through the free spots next to that object. |
+| Comma and Period | Previous and next item, like Shift+Tab and Tab. While placing an object, after a bracket: step through the free spots next to that object. In a text box they type as normal. |
 | Control+Shift+A | Status: coins, diamonds, food, level and so on. |
 | Control+Shift+W | What now: things that are ready and your current goals. |
 | Control+Shift+M | Places: Market, Book of Monsters, Map, Goals, Friends, Mail, Options. |

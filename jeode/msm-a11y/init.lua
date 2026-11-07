@@ -50,6 +50,27 @@ local function say(text, interrupt)
     -- Game text carries colour and style tags (<c=#45db99>Diamonds</c>) that
     -- some paths pass through raw. Strip them here, so nothing speaks them.
     text = tostring(text):gsub("</?%a[^<>]*>", "")
+    -- "1 diamonds", "1 Keys", "1 Common Sticker Packs": a lone 1 (not 21 or
+    -- 1,001) makes the next counted word singular, up to two words on.
+    if text:find("1 ", 1, true) then
+        text = (" " .. text):gsub("([^%d,%.])1 (%a+)( ?)(%a*)( ?)(%a*)", function(pre, a, s1, b, s2, c)
+            local words = { a, b, c }
+            for k = 1, 3 do
+                local w = words[k]
+                local low = w:lower()
+                local stem = low:match("^(.-)s$")
+                if stem and (stem == "coin" or stem == "diamond" or stem == "key" or stem == "relic"
+                    or stem == "shard" or stem == "medal" or stem == "wildcard" or stem == "token"
+                    or stem == "pack" or stem == "egg" or stem == "point" or stem == "item"
+                    or stem == "piece" or stem == "card" or stem == "ticket" or stem == "spin") then
+                    words[k] = w:sub(1, -2)
+                    break
+                end
+                if w == "" or low == "food" or low == "xp" then break end
+            end
+            return pre .. "1 " .. words[1] .. s1 .. words[2] .. s2 .. words[3]
+        end):sub(2)
+    end
     if text ~= "" then speak(text, interrupt and true or false) end
 end
 
@@ -425,7 +446,20 @@ local function currencyCounterName(name)
         pcall(function() ethereal = game.player():getActiveIsland():isEtherealIsland() and true or false end)
         return ethereal and "Shards" or "Coins"
     end
-    return ({ ["1"] = "Diamonds", ["2"] = "Food" })[n] or "Currency"
+    local known = ({ ["1"] = "Diamonds", ["2"] = "Food" })[n]
+    if known then return known end
+    -- The number is the counter's currency type (CurrencyCounter.lua): match
+    -- it against the game's own CurrencyType_ values.
+    for _, c in ipairs({ { "Shards", "Shards" }, { "Starpower", "Starpower" }, { "Keys", "Keys" },
+                         { "Relics", "Relics" }, { "Medals", "Medals" }, { "EggWildcards", "Egg Wildcards" },
+                         { "MinigameTokens", "Minigame Tokens" }, { "ClubboxTokens", "Clubbox Tokens" },
+                         { "CardPack", "Sticker Packs" }, { "BattleXp", "Battle XP" }, { "Xp", "XP" },
+                         { "Coins", "Coins" }, { "Diamonds", "Diamonds" }, { "Food", "Food" } }) do
+        local v = nil
+        pcall(function() v = game["CurrencyType_" .. c[1]] end)
+        if v ~= nil and tostring(v) == n then return c[2] end
+    end
+    return "Currency"
 end
 
 -- Rarity of a monster type id, only when it isn't an ordinary monster
@@ -1019,7 +1053,14 @@ local function collectControls(root, out, depth, group)
         elseif cname == "InfoLikes" and FRIENDLY.__likes and isVisible(child) then
             -- Likes tab: pictures only; name them from game.getLikes.
             local text = nil
-            pcall(function() text = FRIENDLY.__likes(game.selectedMonsterTypeId()) end)
+            pcall(function()
+                local st = FRIENDLY.__likeStatus(game.selectedMonsterId())
+                if st then
+                    text = "Likes: " .. table.concat(st.items, "; ") .. "; and a mystery like. "
+                        .. st.met .. " of " .. st.total .. " met"
+                end
+            end)
+            if not text then pcall(function() text = FRIENDLY.__likes(game.selectedMonsterTypeId()) end) end
             if text then
                 out[#out + 1] = { el = { virtual = function() say(text, true) end }, label = text }
             end
@@ -1040,6 +1081,19 @@ local function collectControls(root, out, depth, group)
             local isRow = hasClickableDescendant(child, 0) and #rowText(child) > 0
             if isClickable(child) and (isRow or not hasClickableDescendant(child, 0)) then
                 local lbl, final = controlLabel(child, cname)
+                -- Market items: the price is a number with a currency icon.
+                if lbl and cname and cname:find("^storeItem%d+$") and FRIENDLY.__storePrice then
+                    pcall(function() lbl = FRIENDLY.__storePrice(child, lbl) end)
+                end
+                -- MEMORY on the Castle: the game marks a free game with "!"
+                -- (template_flipindicator, game.showFreeFlipIndicator).
+                if lbl then
+                    pcall(function()
+                        if child("FunctionName"):GetString() == "play_memory_minigame" then
+                            lbl = lbl .. (game.showFreeFlipIndicator() and ", free game ready" or ", no free game yet")
+                        end
+                    end)
+                end
                 if final then isRow = false end
                 if isRow then
                     -- Its own text plus what its inner buttons say ("Requires Level 4").
@@ -1772,7 +1826,11 @@ function FRIENDLY.__likeNames(typeId)
         local likes = game.getLikes(typeId)
         for i = 0, likes:size() - 2 do
             local n = FRIENDLY.__entityName(likes[i])
-            if n then c[#c + 1] = n:lower() end
+            if n then
+                c[#c + 1] = n:lower()
+                FRIENDLY.__likeDisplay = FRIENDLY.__likeDisplay or {}
+                FRIENDLY.__likeDisplay[n:lower()] = n
+            end
         end
     end)
     FRIENDLY.__likeCache[typeId] = c
@@ -1824,6 +1882,59 @@ function FRIENDLY.__likesNear(w)
     local parts = {}
     for i = 1, math.min(#found, 3) do parts[i] = found[i].text end
     return #parts > 0 and ("Liked by " .. table.concat(parts, "; ")) or nil
+end
+
+-- Market prices (template_storeitem.xml): AnyCost is the number, its Sprite
+-- the currency icon (StoreItem.lua picks it by currency type). Sale items
+-- show saleTag's SaleAmount / OriginalAmount with their own CurrencySprite.
+FRIENDLY.__currencyWords = {
+    { "diamond", "Diamonds" }, { "coin", "Coins" }, { "relic", "Relics" }, { "shard", "Shards" },
+    { "eth", "Shards" }, { "starpower", "Starpower" }, { "medal", "Medals" }, { "wildcard", "Egg Wildcards" },
+    { "key", "Keys" }, { "food", "Food" }, { "treat", "Food" }, { "star", "Starpower" },
+}
+FRIENDLY.__currencySeen = {}
+function FRIENDLY.__currencyOf(el)
+    if not el then return nil end
+    local s = nil
+    pcall(function() s = el:C("Sprite")("spriteName"):GetString() end)
+    if not s or s == "" then return nil end
+    if not FRIENDLY.__currencySeen[s] then
+        FRIENDLY.__currencySeen[s] = true
+        a11y_log("[store] currency sprite " .. s)
+    end
+    local low = s:lower()
+    for _, w in ipairs(FRIENDLY.__currencyWords) do
+        if low:find(w[1], 1, true) then return w[2] end
+    end
+    return nil
+end
+function FRIENDLY.__storePrice(item, lbl)
+    -- Put the currency after the number, matching the whole number only
+    -- ("100" must not hit the end of "1,100").
+    local function addWord(amountEl, iconEl, before)
+        local amt = amountEl and isVisible(amountEl) and elementText(amountEl)
+        local cur = FRIENDLY.__currencyOf(iconEl)
+        if not amt or not cur then return end
+        local from = 1
+        while true do
+            local i, j = lbl:find(amt, from, true)
+            if not i then return end
+            local pc, nc = lbl:sub(i - 1, i - 1), lbl:sub(j + 1, j + 1)
+            if not pc:find("[%w,]") and not nc:find("[%w]") and not (nc == "," and lbl:sub(j + 2, j + 2):find("%d")) then
+                lbl = lbl:sub(1, i - 1) .. (before or "") .. amt .. " " .. cur .. lbl:sub(j + 1)
+                return
+            end
+            from = j + 1
+        end
+    end
+    local sale = findNamed(item, "saleTag", 1)
+    if sale and isVisible(sale) then
+        addWord(findNamed(sale, "SaleAmount", 1), findNamed(sale, "CurrencySprite", 1), "on sale, ")
+        addWord(findNamed(sale, "OriginalAmount", 1), findNamed(sale, "OriginalCurrencySprite", 1), "was ")
+    end
+    local any = findNamed(item, "AnyCost", 1)
+    addWord(any, any)
+    return lbl
 end
 
 -- Monster type id from its display name, or nil if unknown or shared.
@@ -1880,22 +1991,71 @@ POPUP_READERS.popup_breed_egg = POPUP_READERS.__eggResult
 -- Memory game (FlipCardBase.lua / FlipCardEntry.lua): cardEntryN under Cards,
 -- each with a CharacterImage whose sprite is monster_portrait_random while
 -- face down and the card's own picture once turned over.
-FRIENDLY.__flip = { seen = {} }
-function FRIENDLY.__flip.label(entry, i)
+FRIENDLY.__flip = { seen = {}, pending = nil }
+FRIENDLY.__flip.CURRENCY = { coin = "Coins", coins = "Coins", diamond = "Diamonds", diamonds = "Diamonds",
+    food = "Food", xp = "XP", key = "Keys", keys = "Keys", shard = "Shards", relic = "Relics", star = "Starpower" }
+-- Monster portraits are named by code (monster_portrait_square_q05_rare):
+-- game.getPortraitName(monsterId) gives that code, so map it back once.
+function FRIENDLY.__flip.portraitName(code)
+    local map = FRIENDLY.__flip.portraits
+    if not map then
+        map = {}
+        local misses = 0
+        for id = 1, 3000 do
+            -- Only ask for portraits of ids that are real monsters.
+            local pn, nm = nil, nil
+            pcall(function() nm = cleanText(LOC(game.getMonsterData(id):name())) end)
+            if nm and nm ~= "" then pcall(function() pn = game.getPortraitName(id) end) end
+            if nm and nm ~= "" then
+                misses = 0
+                if pn and pn ~= "" then
+                    pn = tostring(pn):match("([^/]+)$"):gsub("%.%w+$", "")
+                    if not map[pn] then map[pn] = FRIENDLY.__withRarity(nm, id) end
+                end
+            else
+                misses = misses + 1
+                if misses > 300 then break end
+            end
+        end
+        FRIENDLY.__flip.portraits = map
+        local n = 0; for _ in pairs(map) do n = n + 1 end
+        a11y_log("[flip] portrait names: " .. n)
+    end
+    return map[code]
+end
+-- What a card shows, or nil while face down.
+function FRIENDLY.__flip.face(entry)
     local img = findNamed(entry, "CharacterImage", 1)
     if not img then return nil end
     local s = ""
     pcall(function() s = tostring(img:C("Sprite")("spriteName"):GetString() or "") end)
-    if s == "" or s:find("portrait_random", 1, true) then return "Card " .. i .. ", face down" end
+    if s == "" or s:find("portrait_random", 1, true) then return nil end
+    local code = (s:match("([^/]+)$") or s):gsub("%.%w+$", "")
+    local amt = elementText(img)
+    amt = amt and amt:find("%d") and amt or nil
     if not FRIENDLY.__flip.seen[s] then
         FRIENDLY.__flip.seen[s] = true
-        a11y_log("[flip] card " .. i .. " sprite " .. s .. " text " .. tostring(elementText(img)))
+        local ind, emb = nil, nil
+        pcall(function() ind = entry:templateVars().CardInd end)
+        pcall(function() emb = game.getFlipEmbeddedSprite(tonumber(ind) or ind) end)
+        a11y_log("[flip] sprite " .. s .. " text " .. tostring(amt) .. " ind " .. tostring(ind) .. " embedded " .. tostring(emb))
     end
-    local face = (s:match("([^/]+)$") or s):gsub("%.%w+$", ""):gsub("^monster_portrait_", "")
-        :gsub("^portrait_", ""):gsub("_", " ")
-    local amt = elementText(img)
-    if amt and amt:find("%d") then face = amt .. " " .. face end
-    return "Card " .. i .. ": " .. face
+    local cur = FRIENDLY.__flip.CURRENCY[code:lower()]
+    if cur then return amt and (amt .. " " .. cur) or cur end
+    if code == "monster_portrait_prize" then return amt and ("Prize, " .. amt) or "Prize" end
+    local name = FRIENDLY.__flip.portraitName(code)
+    if not name then
+        name = code:gsub("^monster_portrait_square_", ""):gsub("^monster_portrait_", ""):gsub("_", " ")
+    end
+    return amt and (amt .. " " .. name) or name
+end
+function FRIENDLY.__flip.label(entry, i)
+    if not findNamed(entry, "CharacterImage", 1) then return nil end
+    local face = FRIENDLY.__flip.face(entry)
+    if not face then return "Card " .. i .. ", face down" end
+    -- Face up and not the card waiting for its pair: a matched card.
+    local matched = FRIENDLY.__flip.pending ~= i and liveMenu("flip_base") ~= nil
+    return "Card " .. i .. ": " .. face .. (matched and ", matched" or "")
 end
 function FRIENDLY.__flip.status(root)
     return joinSentences({ shownText(root, "Title"), shownText(root, "Mismatches") })
@@ -1906,17 +2066,52 @@ function FRIENDLY.__flip.turn(i)
         local entry = root and findNamed(root, "cardEntry" .. (i - 1), 3)
         local img = entry and findNamed(entry, "CharacterImage", 1)
         if not img then say("Card not found", true) return end
+        if FRIENDLY.__flip.face(entry) then
+            say("Card " .. i .. " is already face up: " .. FRIENDLY.__flip.face(entry), true)
+            return
+        end
         local before = FRIENDLY.__flip.status(root)
-        menuState.touch()
-        local ok = pcall(function()
-            img.Touch:onTouchDown(img, 0, 0)
-            img.Touch:onTouchUp(img, 0, 0)
+        local beforeMis = shownText(root, "Mismatches")
+        local beforeTitle = shownText(root, "Title")
+        local first = FRIENDLY.__flip.pending
+        local second = first ~= nil and first ~= i
+        FRIENDLY.__flip.pending = second and nil or i
+        -- The card's touch is FlipCardEntry's own CFlipCardTouch, which has no
+        -- onTouchDown to call: tap its centre through the game's touch input,
+        -- the way the scratch ticket is rubbed.
+        local touch = resolve("a11y_touch")
+        local fx, fy = nil, nil
+        pcall(function()
+            local sw, sh = lua_sys.screenWidth(), lua_sys.screenHeight()
+            fx = (img:absX() + img:absW() / 2) / sw
+            fy = (img:absY() + img:absH() / 2) / sh
         end)
-        if not ok then say("Could not turn the card", true) return end
+        if type(touch) ~= "function" or not fx then
+            a11y_log("[flip] can't tap card " .. i .. ": touch=" .. type(touch) .. " pos=" .. tostring(fx))
+            say("Could not turn the card", true)
+            return
+        end
+        a11y_log(string.format("[flip] tap card %d at %.3f,%.3f", i, fx, fy))
+        menuState.touch()
+        pcall(touch, fx, fy, 2)
+        pcall(touch, fx, fy, 1)
+        later(0.06, function() pcall(touch, fx, fy, 0) end)
         later(0.8, function()
             local r = liveMenu("flip_base")
             local e = r and findNamed(r, "cardEntry" .. (i - 1), 3)
-            local parts = { e and FRIENDLY.__flip.label(e, i) or nil }
+            local face = e and FRIENDLY.__flip.face(e)
+            local parts = { "Card " .. i .. ": " .. (face or "face down") }
+            if second then
+                local mis = r and shownText(r, "Mismatches")
+                local title = r and shownText(r, "Title")
+                if title and beforeTitle and title ~= beforeTitle then
+                    parts[#parts + 1] = "Match. Level complete"
+                elseif mis and beforeMis and mis ~= beforeMis then
+                    parts[#parts + 1] = "No match"
+                else
+                    parts[#parts + 1] = "Match"
+                end
+            end
             local after = r and FRIENDLY.__flip.status(r)
             if after and after ~= before then parts[#parts + 1] = after end
             say(joinSentences(parts), true)
@@ -1924,6 +2119,7 @@ function FRIENDLY.__flip.turn(i)
     end)
 end
 POPUP_READERS.flip_base = function(popup)
+    FRIENDLY.__flip.pending = nil
     return joinSentences({ "Memory game", FRIENDLY.__flip.status(popup),
         "Tab to a card and press Enter to turn it over. Find the matching pairs" })
 end
@@ -2408,6 +2604,9 @@ local function monsterStatus(uid)
             if happy <= 1 then happy = happy * 100 end
             parts[#parts + 1] = "happiness " .. math.floor(happy + 0.5) .. "%"
         end
+        local st = nil
+        pcall(function() st = FRIENDLY.__likeStatus(uid) end)
+        if st then parts[#parts + 1] = st.met .. " of " .. st.total .. " likes met" end
     end
     local coins = 0
     pcall(function() coins = game.monsterEarnings(uid) or 0 end)
@@ -2682,12 +2881,14 @@ local function directionWords(dx, dy)
 end
 
 -- Every other structure and monster on the island, with its tile.
-local function landmarks()
+local function landmarks(noSkip)
     -- Skip the object being placed itself (by id, not tile: whatever blocks it
     -- shares its tile and must stay in the list).
     local skip = {}
-    pcall(function() skip[game.selectedMonsterId()] = true end)
-    pcall(function() skip[game.selectedStructureId()] = true end)
+    if not noSkip then
+        pcall(function() skip[game.selectedMonsterId()] = true end)
+        pcall(function() skip[game.selectedStructureId()] = true end)
+    end
     local out = {}
     pcall(function()
         local isl = game.player():getActiveIsland()
@@ -2710,10 +2911,53 @@ local function landmarks()
                 local tid, sp = nil, nil
                 pcall(function() tid = ent:monsterTypeId() end)
                 pcall(function() sp = cleanText(LOC(game.getMonsterDataFromUniqueId(uid):name())) end)
-                out[#out + 1] = { x = x, y = y, name = monsterLabel(uid), rank = 0, tid = tid, species = sp }
+                out[#out + 1] = { x = x, y = y, name = monsterLabel(uid), rank = 0, tid = tid, species = sp, uid = uid }
             end
         end
     end)
+    return out
+end
+
+-- Which of a monster's Likes are met: each like's nearest copy on the island,
+-- within FRIENDLY.LIKE_RADIUS of the monster (a guess until measured). The
+-- island list is cached for a moment: the Monsters list asks for every row.
+function FRIENDLY.__likeStatus(uid)
+    local tid = nil
+    pcall(function() tid = game.GetMonster(uid):monsterTypeId() end)
+    if not tid then return nil end
+    local names = FRIENDLY.__likeNames(tid)
+    if #names == 0 then return nil end
+    local mx, my = entityTile(game.GetMonster(uid))
+    local now = clock()
+    local cache = FRIENDLY.__islandCache
+    if not cache or now - cache.t > 2 then
+        cache = { t = now, list = landmarks(true) }
+        FRIENDLY.__islandCache = cache
+    end
+    local out = { met = 0, total = #names, items = {} }
+    for _, n in ipairs(names) do
+        local best = nil
+        for _, l in ipairs(cache.list) do
+            if l.uid ~= uid and FRIENDLY.__isLike({ n }, l) then
+                local d = mx and math.max(math.abs(l.x - mx), math.abs(l.y - my)) or nil
+                if d and (not best or d < best) then best = d end
+                if not mx and not best then best = -1 end
+            end
+        end
+        local label = FRIENDLY.__likeDisplay and FRIENDLY.__likeDisplay[n] or n
+        local text
+        if not best then
+            text = label .. ", not on your island"
+        elseif best < 0 then
+            text = label .. ", on your island"
+        elseif best <= FRIENDLY.LIKE_RADIUS then
+            out.met = out.met + 1
+            text = label .. ", met, " .. (best <= 1 and "next to it" or (best .. " tiles away"))
+        else
+            text = label .. ", too far, " .. best .. " tiles away"
+        end
+        out.items[#out.items + 1] = text
+    end
     return out
 end
 
@@ -3729,6 +3973,7 @@ local function textEntryOpen()
     end
     return false
 end
+nav.textEntryOpen = textEntryOpen
 
 local function screenKey()
     local key = nil
@@ -4654,7 +4899,14 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
     jeode.registerGlobal("a11y_arrow", arrow)
     jeode.registerGlobal("a11y_whatnow", whatNow)
     jeode.registerGlobal("a11y_back", goBack)
-    jeode.registerGlobal("a11y_spot", function(dir) spotStep(dir) end)
+    -- Comma and Period: free spots while placing, otherwise the same as
+    -- Shift+Tab and Tab (Shift+Tab also opens the Steam overlay). Left alone
+    -- while a text box is open, so names can have commas and full stops.
+    jeode.registerGlobal("a11y_spot", function(dir)
+        if placing() then spotStep(dir) return end
+        if nav.textEntryOpen and nav.textEntryOpen() then return end
+        navMove(dir)
+    end)
     -- Control Shift C: the game's own default island view (what it uses after
     -- the island fanfare). Placing re-centres on the object at the next arrow.
     jeode.registerGlobal("a11y_camera", function()
