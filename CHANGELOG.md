@@ -2,6 +2,31 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## 0.1.9-alpha - 2026-11-07
+
+### Added
+
+- Placing is much faster. The arrow keys now move a placing cursor instead of dragging the object, so each press is spoken straight away (free or blocked, what is nearby, Likes close by). Enter places the object where the cursor is and Escape cancels; Tab says the spot again. The brackets, Comma and Period jump the cursor too. The Confirm placement, Check spot and Cancel placement items are gone.
+- Two guides: tutorial.md walks through the game's tutorial step by step, and getting-started.md covers what to do after it. Thank you to Keri, the first player to finish the tutorial with the mod, whose log made both possible.
+- The Memory Game (MEMORY on the Castle) can be played: it says the level and mismatches left, each card is an item you can Tab to ("Card 3, face down"), and Enter turns it over and says what it shows.
+- A monster's Likes tab (INFO, then Likes) only showed pictures. It now has an item that names each thing the monster likes, then "and a mystery like" for the one the game keeps hidden. Placing a monster next to something it likes makes it happier.
+- While placing a monster, the spot it is on also says its Likes close by, for example "Likes nearby: Reflecting Pool, 2 tiles away". While placing a decoration, it says which monsters close by like it, for example "Liked by Fwub, Fwog, next to it". The Monsters list says each monster's happiness.
+- Deselecting something says what it was, for example "Glob, Toe Jammer deselected", instead of only "Deselected".
+- When a monster levels up, for example from feeding, you hear "Noggy1 leveled up to level 7".
+
+### Improved
+
+- The Colossal Conundrum (CONUNDRUM on the Coloss-Eye) only offered Close and Help. It now says how many puzzle pieces you have collected, which days are special pieces and which is the final piece, and when you can collect the next one. A "Puzzle" item you can Tab to says it again, and Collect and Catch Up appear when the game shows them.
+
+### Fixed
+
+- After "Placed", the game could stay in placing mode, so the mod kept saying "Blocked" (the object was sitting on its own spot). Placing now ends properly, the way the game's own checkmark does it.
+- Left bracket and Right bracket said the landmark's name and then cut it off with the free spot. They now say both together, for example "Fwub, Fwog, 3 of 12. Free spot, 2 tiles below of Fwub, Fwog".
+- After moving a monster with MOVE, you could be left on a screen with only SHOW GRID and no way out. That panel now closes after placing or cancelling, and Escape closes it if it is ever left behind.
+- Hatching a monster said "You've hatched..." without saying what. It now names the monster, with its rarity if it isn't ordinary, for example "You've hatched Pummel. What would you like to do with it?". Collecting a bred egg ("You've bred...") does the same.
+- Questions said "1 button: No" when they first appeared, because Yes is held back while you still have Enter down. They now list both answers.
+- Pressing Enter on something that asks a question (for example Bread in the Bakery: "Would you like to bake Bread for 1,000 Coins?") could answer Yes by itself a moment later, because the game also treats Enter as Yes and took the same key press. The question now waits until you let go of Enter and choose an answer.
+
 ## 0.1.8-alpha - 2026-11-06
 
 ### Added

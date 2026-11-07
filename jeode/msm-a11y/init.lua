@@ -372,14 +372,16 @@ local function isVisible(el)
 end
 -- Has a Touch component that the game hasn't switched off (hidden context bar
 -- buttons and tutorial-blocked controls have Touch "enabled" = 0).
-local function isClickable(el)
+-- isClickable.heldBack: buttons the Enter guard (nav.guardEnter) switched off
+-- for a moment; they still count, so a new question lists Yes as well as No.
+local isClickable = setmetatable({ heldBack = {} }, { __call = function(self, el)
     local hit = false
     pcall(function() if el.Touch ~= nil then hit = true end end)
     if not hit then return false end
     local en = 1
     pcall(function() en = el.Touch("enabled"):GetInt() end)
-    return en ~= 0
-end
+    return en ~= 0 or self.heldBack[tostring(el)] == true
+end })
 local function elementName(el)
     local nm = nil
     pcall(function() nm = tostring(el:name()) end)
@@ -997,6 +999,31 @@ local function collectControls(root, out, depth, group)
                 out[#out + 1] = { el = { virtual = function() S.scratch({ i }) end }, label = lbl }
             end
             child = nil
+        elseif cname and cname:find("^cardEntry%d+$") and FRIENDLY.__flip and elementName(root) == "Cards" then
+            -- Memory game cards: Enter turns the card over (FRIENDLY.__flip).
+            local i = tonumber(cname:match("%d+$")) + 1
+            local lbl = FRIENDLY.__flip.label(child, i)
+            if lbl then
+                out[#out + 1] = { el = { virtual = function() FRIENDLY.__flip.turn(i) end }, label = lbl }
+            end
+            child = nil
+        elseif cname == "Layout" and FRIENDLY.__conundrum and elementName(root) == "MainPanel" then
+            -- Colossal Conundrum puzzle: progress as one item.
+            local text = FRIENDLY.__conundrum(root)
+            if text then
+                local short = text:match("^[^%.]+") or text
+                out[#out + 1] = { el = { virtual = function() say(text, true) end },
+                                  label = "Puzzle, " .. short .. ", Enter for details" }
+            end
+            child = nil
+        elseif cname == "InfoLikes" and FRIENDLY.__likes and isVisible(child) then
+            -- Likes tab: pictures only; name them from game.getLikes.
+            local text = nil
+            pcall(function() text = FRIENDLY.__likes(game.selectedMonsterTypeId()) end)
+            if text then
+                out[#out + 1] = { el = { virtual = function() say(text, true) end }, label = text }
+            end
+            child = nil
         elseif cname == "CurrentSender" and social then
             local text = social.mailMessage(root)
             if text then
@@ -1202,7 +1229,7 @@ local menus = {}   -- file name -> { root, t, frame, rootName, countdown }
 local menuState = { announceFrames = 4, activated = -100, lastTick = -100,
     -- Panels that open alongside placing or a selected decoration (Show Grid,
     -- Decoration Size). Never a screen of their own, and they can linger.
-    sidePanels = { showgrid_popup = true, scale_popup = true } }
+    sidePanels = { showgrid_popup = true, scale_popup = true, volume_popup = true } }
 function menuState.usable(m)
     if m == nil or m.root == nil or m.t <= menuState.activated then return false end
     if clock() - m.t > MENU_FRESH_SECONDS then return false end
@@ -1266,6 +1293,10 @@ local function runPending(now, root)
             local key = tostring(root)
             if root and not p.done[key] then p.done[key] = true; pcall(p.fn, root) end
             if now < p.stop then pending[#pending + 1] = p end
+        elseif p.everyTick then
+            -- Runs on every menu tick (each live root) until p.finished or p.stop.
+            if root then pcall(p.fn, root, now) end
+            if not p.finished and now < p.stop then pending[#pending + 1] = p end
         else
             pcall(p.fn)
         end
@@ -1284,6 +1315,7 @@ local function menuTick(root, file)
     if file == "hud" and readyHook then pcall(readyHook, now) end
     if file == "popup_name_entry" and menuState.nameEcho then pcall(menuState.nameEcho, root) end
     if walletHook then pcall(walletHook, now) end
+    if menuState.levelWatch then pcall(menuState.levelWatch, now) end
     local m = menus[file]
     if not m then
         local rn = "?"; pcall(function() rn = tostring(root:name()) end)
@@ -1653,6 +1685,248 @@ function S.report(found, single)
     end)
 end
 end -- do (scratch ticket)
+
+-- Colossal Conundrum (daily_cumulative_login, DCL.lua): a puzzle with one
+-- piece per day. Pieces not collected yet show their day number
+-- (piece_NN_number / piece_special_NN_number / piece_final_NN_number under
+-- Layout); collected ones lose it. So the lowest number left is the next
+-- day to collect.
+function FRIENDLY.__conundrum(root)
+    local layout = findNamed(root, "Layout", 4)
+    if not layout then return nil end
+    local lo, hi, left, special, final = nil, 0, 0, {}, nil
+    local kids = nil; pcall(function() kids = layout:elements() end)
+    local n = 0; pcall(function() n = kids:size() end)
+    for i = 0, n - 1 do
+        local c = nil; pcall(function() c = kids[i] end)
+        local nm = c and elementName(c) or ""
+        local day = c and isVisible(c) and tonumber(elementText(findNamed(c, "Number", 1)) or "")
+        if day then
+            left = left + 1
+            if not lo or day < lo then lo = day end
+            if day > hi then hi = day end
+            if nm:find("^piece_special") then special[#special + 1] = day end
+            if nm:find("^piece_final") then final = day end
+        end
+    end
+    local parts = {}
+    if left == 0 then
+        parts[1] = "All pieces collected"
+    else
+        parts[1] = (lo - 1) .. " of " .. hi .. " pieces collected"
+        if #special > 0 then
+            table.sort(special)
+            parts[#parts + 1] = "Special pieces on day" .. (#special == 1 and " " or "s ") .. table.concat(special, ", ")
+        end
+        if final then parts[#parts + 1] = "The final piece is day " .. final end
+    end
+    local nextMsg = shownText(root, "NextCollectMessage")
+    if nextMsg then parts[#parts + 1] = nextMsg end
+    local done = shownText(root, "CompletedMessage")
+    if done then parts[#parts + 1] = done end
+    local details = shownText(root, "CompletedMessageDetails")
+    if details then parts[#parts + 1] = details end
+    return joinSentences(parts)
+end
+
+POPUP_READERS.daily_cumulative_login = function(popup)
+    return joinSentences({ "Colossal Conundrum", FRIENDLY.__conundrum(popup) })
+end
+
+-- What a monster likes (object_info.xml InfoLikes: game.getLikes(typeId) is
+-- a list of entity ids; the game shows the last one as a mystery "?").
+function FRIENDLY.__entityName(eid)
+    local n = nil
+    pcall(function() n = cleanText(LOC(game.entityName(eid))) end)
+    if not n or n == "" then
+        pcall(function() n = cleanText(LOC(game.getMonsterByEntityId(eid):name())) end)
+    end
+    return (n and n ~= "") and n or nil
+end
+function FRIENDLY.__likes(typeId)
+    local likes = game.getLikes(typeId)
+    local n = likes:size()
+    if n == 0 then return "Likes: nothing" end
+    local names = {}
+    for i = 0, n - 2 do
+        names[#names + 1] = FRIENDLY.__entityName(likes[i]) or "something"
+    end
+    if not POPUP_READERS.__likesLogged then
+        POPUP_READERS.__likesLogged = true
+        a11y_log("[likes] type " .. tostring(typeId) .. ": " .. n .. " entries, " .. table.concat(names, ", "))
+    end
+    if #names == 0 then return "Likes: a mystery like" end
+    return "Likes: " .. table.concat(names, ", ") .. ", and a mystery like"
+end
+
+-- Likes near the spot being placed on (spotText). A monster being placed:
+-- which of its Likes are close. A decoration: which monsters close by like
+-- it. The game's hidden "mystery" like is left out.
+FRIENDLY.__likeCache = {}
+FRIENDLY.LIKE_RADIUS = 5
+function FRIENDLY.__likeNames(typeId)
+    local c = FRIENDLY.__likeCache[typeId]
+    if c then return c end
+    c = {}
+    pcall(function()
+        local likes = game.getLikes(typeId)
+        for i = 0, likes:size() - 2 do
+            local n = FRIENDLY.__entityName(likes[i])
+            if n then c[#c + 1] = n:lower() end
+        end
+    end)
+    FRIENDLY.__likeCache[typeId] = c
+    return c
+end
+function FRIENDLY.__isLike(likeNames, l)
+    local mine = (l.species or l.name or ""):lower():gsub("%s+%d+$", "")
+    for _, n in ipairs(likeNames) do
+        if mine == n then return true end
+    end
+    return false
+end
+function FRIENDLY.__likesNear(w)
+    if not (w and w.x and w.list) then return nil end
+    local function dist(l) return math.max(math.abs(l.x - w.x), math.abs(l.y - w.y)) end
+    local function away(d) return d <= 1 and "next to it" or (d .. " tiles away") end
+    local isMonster = false
+    pcall(function() isMonster = game.selectedObjIsMonster() and true or false end)
+    local found = {}
+    if isMonster then
+        local tid = nil
+        pcall(function() tid = game.GetMonster(game.selectedMonsterId()):monsterTypeId() end)
+        if not tid then pcall(function() tid = game.selectedMonsterTypeId() end) end
+        if not tid then return nil end
+        local names = FRIENDLY.__likeNames(tid)
+        if #names == 0 then return nil end
+        for _, l in ipairs(w.list) do
+            local d = dist(l)
+            if d <= FRIENDLY.LIKE_RADIUS and FRIENDLY.__isLike(names, l) then
+                found[#found + 1] = { d = d, text = (l.species and l.name or l.name) .. ", " .. away(d) }
+            end
+        end
+        table.sort(found, function(a, b) return a.d < b.d end)
+        local parts = {}
+        for i = 1, math.min(#found, 3) do parts[i] = found[i].text end
+        return #parts > 0 and ("Likes nearby: " .. table.concat(parts, "; ")) or nil
+    end
+    local me = nil
+    pcall(function() me = cleanText(game.objectName()) end)
+    if not me or me == "" then return nil end
+    local probe = { name = me }
+    for _, l in ipairs(w.list) do
+        local d = dist(l)
+        if l.tid and d <= FRIENDLY.LIKE_RADIUS and FRIENDLY.__isLike(FRIENDLY.__likeNames(l.tid), probe) then
+            found[#found + 1] = { d = d, text = l.name .. ", " .. away(d) }
+        end
+    end
+    table.sort(found, function(a, b) return a.d < b.d end)
+    local parts = {}
+    for i = 1, math.min(#found, 3) do parts[i] = found[i].text end
+    return #parts > 0 and ("Liked by " .. table.concat(parts, "; ")) or nil
+end
+
+-- Monster type id from its display name, or nil if unknown or shared.
+function POPUP_READERS.__typeByName(name)
+    local map = POPUP_READERS.__names
+    if not map then
+        map = {}
+        local misses = 0
+        for id = 1, 3000 do
+            local n = nil
+            pcall(function() n = cleanText(LOC(game.getMonsterData(id):name())) end)
+            if n and n ~= "" then
+                misses = 0
+                n = n:lower()
+                map[n] = (map[n] == nil) and id or false
+            else
+                misses = misses + 1
+                if misses > 300 then break end
+            end
+        end
+        POPUP_READERS.__names = map
+    end
+    return map[(name or ""):lower()] or nil
+end
+
+-- "You've hatched..." / "You've bred..." keep the monster in a separate
+-- MonsterName text; put it in place of the dots.
+function POPUP_READERS.__eggResult(popup)
+    local note = shownText(popup, "Notification")
+    local name = shownText(popup, "MonsterName")
+    if not note or not name then return nil end
+    -- PopupHatchMonster.lua: setupMonster reads the MonsterID template var.
+    local tid = nil
+    pcall(function()
+        local v = popup:templateVars().MonsterID
+        if type(v) == "userdata" then v = v:GetInt() end
+        tid = tonumber(v)
+    end)
+    -- popup_breed_egg is built in C++ with no MonsterID: look the name up,
+    -- unless several monsters share it (common and rare Furcorn).
+    if not (tid and tid > 0) then tid = POPUP_READERS.__typeByName(name) end
+    if tid and tid > 0 then name = FRIENDLY.__withRarity(name, tid) end
+    if not POPUP_READERS.__eggLogged then
+        POPUP_READERS.__eggLogged = true
+        a11y_log("[rarity] egg result " .. tostring(name) .. ", type id " .. tostring(tid))
+    end
+    local head, rest = note:match("^(.-)%.%.%.%s*(.*)$")
+    if not head then return joinSentences({ note, name }) end
+    return joinSentences({ head .. " " .. name, rest ~= "" and rest or nil })
+end
+POPUP_READERS.popup_hatch_monster = POPUP_READERS.__eggResult
+POPUP_READERS.popup_breed_egg = POPUP_READERS.__eggResult
+
+-- Memory game (FlipCardBase.lua / FlipCardEntry.lua): cardEntryN under Cards,
+-- each with a CharacterImage whose sprite is monster_portrait_random while
+-- face down and the card's own picture once turned over.
+FRIENDLY.__flip = { seen = {} }
+function FRIENDLY.__flip.label(entry, i)
+    local img = findNamed(entry, "CharacterImage", 1)
+    if not img then return nil end
+    local s = ""
+    pcall(function() s = tostring(img:C("Sprite")("spriteName"):GetString() or "") end)
+    if s == "" or s:find("portrait_random", 1, true) then return "Card " .. i .. ", face down" end
+    if not FRIENDLY.__flip.seen[s] then
+        FRIENDLY.__flip.seen[s] = true
+        a11y_log("[flip] card " .. i .. " sprite " .. s .. " text " .. tostring(elementText(img)))
+    end
+    local face = (s:match("([^/]+)$") or s):gsub("%.%w+$", ""):gsub("^monster_portrait_", "")
+        :gsub("^portrait_", ""):gsub("_", " ")
+    local amt = elementText(img)
+    if amt and amt:find("%d") then face = amt .. " " .. face end
+    return "Card " .. i .. ": " .. face
+end
+function FRIENDLY.__flip.status(root)
+    return joinSentences({ shownText(root, "Title"), shownText(root, "Mismatches") })
+end
+function FRIENDLY.__flip.turn(i)
+    later(0.05, function()
+        local root = liveMenu("flip_base")
+        local entry = root and findNamed(root, "cardEntry" .. (i - 1), 3)
+        local img = entry and findNamed(entry, "CharacterImage", 1)
+        if not img then say("Card not found", true) return end
+        local before = FRIENDLY.__flip.status(root)
+        menuState.touch()
+        local ok = pcall(function()
+            img.Touch:onTouchDown(img, 0, 0)
+            img.Touch:onTouchUp(img, 0, 0)
+        end)
+        if not ok then say("Could not turn the card", true) return end
+        later(0.8, function()
+            local r = liveMenu("flip_base")
+            local e = r and findNamed(r, "cardEntry" .. (i - 1), 3)
+            local parts = { e and FRIENDLY.__flip.label(e, i) or nil }
+            local after = r and FRIENDLY.__flip.status(r)
+            if after and after ~= before then parts[#parts + 1] = after end
+            say(joinSentences(parts), true)
+        end)
+    end)
+end
+POPUP_READERS.flip_base = function(popup)
+    return joinSentences({ "Memory game", FRIENDLY.__flip.status(popup),
+        "Tab to a card and press Enter to turn it over. Find the matching pairs" })
+end
 
 POPUP_READERS.minigame_doorprize = function(popup)
     local parts = { "Scratch ticket" }
@@ -2118,11 +2392,49 @@ local function monsterStatus(uid)
         local muted = false
         pcall(function() muted = ent:isMuted() and true or false end)
         if muted then parts[#parts + 1] = "muted" end
+        -- Happiness (ContextBar.lua shows game.monsterHappiness as a bar).
+        local happy = nil
+        local ok = pcall(function() happy = tonumber(game.monsterHappiness(uid)) end)
+        if not ok then
+            local sel = nil
+            pcall(function() sel = game.selectedMonsterId() end)
+            if sel == uid then pcall(function() happy = tonumber(game.monsterHappiness()) end) end
+        end
+        if not menuState.happyLogged then
+            menuState.happyLogged = true
+            a11y_log("[likes] monsterHappiness(" .. tostring(uid) .. ") ok=" .. tostring(ok) .. " -> " .. tostring(happy))
+        end
+        if happy and happy > 0 then
+            if happy <= 1 then happy = happy * 100 end
+            parts[#parts + 1] = "happiness " .. math.floor(happy + 0.5) .. "%"
+        end
     end
     local coins = 0
     pcall(function() coins = game.monsterEarnings(uid) or 0 end)
     if coins > 0 then parts[#parts + 1] = tostring(coins) .. " coins" end
     return #parts > 0 and table.concat(parts, ", ") or nil
+end
+
+-- Level-ups (mostly from feeding, which needs the monster selected): watch
+-- the selected monster's level and say when it goes up.
+menuState.levels = { t = -100 }
+function menuState.levelWatch(now)
+    local w = menuState.levels
+    if now - w.t < 0.25 then return end
+    w.t = now
+    local uid, lvl = nil, nil
+    pcall(function() uid = game.selectedMonsterId() end)
+    if not uid or uid == 0 then w.uid = nil return end
+    pcall(function() lvl = game.GetMonster(uid):level() end)
+    if not lvl then return end
+    if w.uid == uid and w.lvl and lvl > w.lvl then
+        local name = nil
+        pcall(function() name = cleanText(game.getMonsterName(uid)) end)
+        if not name or name == "" then name = "Monster" end
+        say(name .. " leveled up to level " .. tostring(lvl), false)
+        a11y_log("[level] " .. name .. " " .. tostring(w.lvl) .. " -> " .. tostring(lvl))
+    end
+    w.uid, w.lvl = uid, lvl
 end
 
 local function withStatus(label, status)
@@ -2342,7 +2654,9 @@ local function selectedTile()
 end
 
 -- Screen direction of grid deltas: sx * (dx + dy) is right, sy * (dy - dx) is down.
-local screenSign = { sx = 1, sy = 1, sxKnown = false, syKnown = false }
+-- Known from logged drags (right raises x + y, down raises y - x); a noisy
+-- drag once flipped sy, so the signs are no longer re-learned.
+local screenSign = { sx = 1, sy = 1, sxKnown = true, syKnown = true }
 
 local function calibrate(dirX, dirY, gx, gy)
     if not gx or (gx == 0 and gy == 0) then return end
@@ -2392,7 +2706,12 @@ local function landmarks()
             local uid = ms[i]
             local ent = nil; pcall(function() ent = game.GetMonster(uid) end)
             local x, y = entityTile(ent)
-            if x and not skip[uid] then out[#out + 1] = { x = x, y = y, name = monsterLabel(uid), rank = 0 } end
+            if x and not skip[uid] then
+                local tid, sp = nil, nil
+                pcall(function() tid = ent:monsterTypeId() end)
+                pcall(function() sp = cleanText(LOC(game.getMonsterDataFromUniqueId(uid):name())) end)
+                out[#out + 1] = { x = x, y = y, name = monsterLabel(uid), rank = 0, tid = tid, species = sp }
+            end
         end
     end)
     return out
@@ -2400,9 +2719,11 @@ end
 
 local whereLogged = false
 -- "right of Small Bakery", "2 tiles above Noggy1", "on Small Rock".
-local function whereText()
-    local x, y = selectedTile()
+local function whereText(cx, cy)
+    local x, y = cx, cy
+    if not x then x, y = selectedTile() end
     local list = x and landmarks() or {}
+    menuState.lastWhere = { x = x, y = y, list = list }
     a11y_log("[where] tile=" .. tostring(x) .. "," .. tostring(y))
     if not whereLogged then
         whereLogged = true
@@ -2423,11 +2744,21 @@ local function whereText()
 end
 
 local function spotText()
+    -- Placing with the cursor (menuState.cursorMove): describe the cursor's
+    -- tile, tested with the game's own check (menuState.freeAt).
+    local c = menuState.cur
+    if c and menuState.freeAt and placing() then
+        local f = menuState.freeAt(c.x, c.y)
+        local st = f == nil and "Spot unknown" or (f and "Free spot" or "Blocked")
+        local wh = nil; pcall(function() wh = whereText(c.x, c.y) end)
+        local lk = nil; pcall(function() lk = FRIENDLY.__likesNear(menuState.lastWhere) end)
+        return joinSentences({ wh and (st .. ", " .. wh) or st, lk })
+    end
     local ok, p = pcall(function() return game.isSelectedObjectPlaceable() end)
     local status = not ok and "Spot unknown" or (p and "Free spot" or "Blocked")
     local where = nil; pcall(function() where = whereText() end)
-    if where then return status .. ", " .. where end
-    return status
+    local likes = nil; pcall(function() likes = FRIENDLY.__likesNear(menuState.lastWhere) end)
+    return joinSentences({ where and (status .. ", " .. where) or status, likes })
 end
 
 -- Where the object being placed is on screen, relative to the centre the
@@ -2443,6 +2774,7 @@ local function arrow(dx, dy)
         a11y_log("[place] arrow ignored, context=" .. barContext())
         return
     end
+    if menuState.cursorMove and menuState.cursorMove(dx, dy) then return end
     if type(dragFn) ~= "function" then say("Drag function unavailable", true) return end
     local now = clock()
     local function drag()
@@ -2487,11 +2819,13 @@ local function watchPlacing()
     if now and not wasPlacing then
         a11y_log("[place] placing, context=" .. barContext())
         placeAt.t = -100                 -- new placement: centre the camera on first move
+        menuState.cur = nil
         later(0.3, function()
             say("Placing " .. (selectedName() or "object") .. ". " .. spotText()
-                .. ". Arrow keys move it. Tab to Confirm placement.", false)
+                .. ". Arrow keys move it, Enter places it, Escape cancels.", false)
         end)
     end
+    if not now and wasPlacing then menuState.cur = nil end
     wasPlacing = now
 end
 contextbarHook = watchPlacing
@@ -2534,6 +2868,40 @@ do
         return free
     end
 
+    -- The placing cursor: arrows move a tile position the mod keeps, tested
+    -- with freeAt, so nothing in the game moves until Enter (menuState.placeHere).
+    -- The grid is a diamond: one tile is half a step on screen, so Right
+    -- alternates (1,0) / (0,1) and Down (0,1) / (-1,0), which goes straight.
+    menuState.freeAt = freeAt
+    menuState.setTile = setTileFn
+    function menuState.cursorMove(dirX, dirY)
+        if type(setTileFn) ~= "function" or type(moveTileFn) ~= "function" then return false end
+        local c = menuState.cur
+        if not c then
+            local x, y = selectedTile()
+            if not x then return false end
+            c = { x = x, y = y, h = false, v = false }
+            menuState.cur = c
+        end
+        local mx, my = 0, 0
+        if dirX ~= 0 then
+            c.h = not c.h
+            if c.h then mx = dirX else my = dirX end
+        else
+            c.v = not c.v
+            if c.v then my = dirY else mx = -dirY end
+        end
+        c.x, c.y = c.x + mx, c.y + my
+        say(spotText(), true)
+        return true
+    end
+    -- Where to describe from: the cursor while placing with it, else the object.
+    function menuState.cursorTile()
+        local c = menuState.cur
+        if c then return c.x, c.y end
+        return selectedTile()
+    end
+
     -- Free tiles around the target, nearest rings first. nil = can't probe.
     local function freeSpots(target)
         local out = {}
@@ -2556,12 +2924,10 @@ do
         if gx + gy ~= 0 and abs(fx) > 0.02 then
             local a = fx / (gx + gy)
             screenSign.A = screenSign.A and (screenSign.A + a) / 2 or a
-            screenSign.sx, screenSign.sxKnown = screenSign.A > 0 and 1 or -1, true
         end
         if gy - gx ~= 0 and abs(fy) > 0.02 then
             local b = fy / (gy - gx)
             screenSign.B = screenSign.B and (screenSign.B + b) / 2 or b
-            screenSign.sy, screenSign.syKnown = screenSign.B > 0 and 1 or -1, true
         end
     end
 
@@ -2610,6 +2976,10 @@ do
         if m > MAX_DRAG then fx, fy = fx * MAX_DRAG / m, fy * MAX_DRAG / m end
         dragBy(gen, fx, fy, function() moveTo(gen, tx, ty, tries - 1, done) end)
     end
+    function menuState.dragTo(x, y, done)
+        poi.gen = poi.gen + 1
+        moveTo(poi.gen, x, y, MOVE_TRIES + 4, done)
+    end
 
     local function placeable()
         local ok, p = pcall(function() return game.isSelectedObjectPlaceable() end)
@@ -2617,7 +2987,7 @@ do
     end
 
     local function relation(target)
-        local x, y = selectedTile()
+        local x, y = menuState.cursorTile()
         if not x then return "near " .. target.name end
         local dx, dy = x - target.x, y - target.y
         local d = abs(dx); if abs(dy) > d then d = abs(dy) end
@@ -2627,13 +2997,33 @@ do
         return d .. " tiles " .. dir .. " of " .. target.name
     end
 
+    -- ". Likes nearby: ..." for the spot reached (FRIENDLY.__likesNear).
+    local function likesTail()
+        local x, y = menuState.cursorTile()
+        local t = nil
+        if x then pcall(function() t = FRIENDLY.__likesNear({ x = x, y = y, list = landmarks() }) end) end
+        return t and (". " .. t) or ""
+    end
+
     local function goToSpot(gen, target)
         local sp = poi.spots[poi.spot]
+        if type(setTileFn) == "function" then
+            -- Cursor: just point at the free spot; Enter moves the object there.
+            local c = menuState.cur or { h = false, v = false }
+            c.x, c.y = sp.x, sp.y
+            menuState.cur = c
+            local tl = ", " .. poi.spot .. " of " .. #poi.spots .. (poi.suffix or "")
+            poi.suffix = nil
+            local pre = poi.prefix or ""
+            poi.prefix = nil
+            say(pre .. "Free spot, " .. relation(target) .. likesTail() .. tl, true)
+            return
+        end
         moveTo(gen, sp.x, sp.y, MOVE_TRIES, function(reached)
             if gen ~= poi.gen then return end
             local tail = ", " .. poi.spot .. " of " .. #poi.spots .. (poi.suffix or "")
             poi.suffix = nil
-            if reached and placeable() then say("Free spot, " .. relation(target) .. tail, true)
+            if reached and placeable() then say("Free spot, " .. relation(target) .. likesTail() .. tail, true)
             else say(spotText() .. tail, true) end
         end)
     end
@@ -2644,7 +3034,8 @@ do
         poi.target, poi.spots, poi.spot = target, freeSpots(target), 1
         if poi.spots then
             if #poi.spots == 0 then
-                say("No free spots near " .. target.name, true)
+                poi.prefix = nil
+                say(target.name .. ". No free spots near it", true)
                 return
             end
             a11y_log("[poi] " .. #poi.spots .. " free spots near " .. target.name)
@@ -2652,6 +3043,7 @@ do
             goToSpot(gen, target)
             return
         end
+        if poi.prefix then say(poi.prefix, true) poi.prefix = nil end
         local i = 0
         local function nextSpot()
             if gen ~= poi.gen then return end
@@ -2665,7 +3057,7 @@ do
                 if gen ~= poi.gen then return end
                 if reached and placeable() then
                     a11y_log("[poi] free at offset " .. off[1] .. "," .. off[2] .. " of " .. target.name)
-                    say("Free spot, " .. relation(target), true)
+                    say("Free spot, " .. relation(target) .. likesTail(), true)
                 else
                     nextSpot()
                 end
@@ -2714,7 +3106,9 @@ do
         if poi.index < 1 then poi.index = n end
         poi.gen = poi.gen + 1
         local target = poi.list[poi.index]
-        say(target.name .. ", " .. poi.index .. " of " .. n, true)
+        -- Said together with the spot it finds (jumpTo), so the free-spot
+        -- message doesn't cut the landmark's name off.
+        poi.prefix = target.name .. ", " .. poi.index .. " of " .. n .. ". "
         local gen = poi.gen
         later(0.05, function() jumpTo(gen, target) end)
     end
@@ -2724,7 +3118,8 @@ end
 -- not menu buttons. They do what ContextBar.confirm_move / cancel_move do:
 -- close the "show grid" popup, then game.moveObjectDone(true/false).
 local function closeGridPopup()
-    if currentPopupName() == "showgrid_popup" then pcall(game.popPopUp) end
+    local top = currentPopupName()
+    if top == "showgrid_popup" or top == "volume_popup" then pcall(game.popPopUp) end
 end
 
 local function confirmPlacement()
@@ -2733,6 +3128,20 @@ local function confirmPlacement()
     closeGridPopup()
     local done, err = pcall(function() game.moveObjectDone(true) end)
     if not done then a11y_log("[place] moveObjectDone(true) failed: " .. tostring(err)) say("Could not place", true) return end
+    -- ContextBar.lua confirm_move then leaves the MOVE bar: a monster goes back
+    -- to its own actions, anything else to the island's. Without this the bar
+    -- stays in MOVE and placing never ends.
+    local isMonster = false
+    pcall(function() isMonster = game.selectedObjIsMonster() and true or false end)
+    local ctxOk = isMonster and pcall(function() manager:setContext("MONSTER") end)
+    if not ctxOk then pcall(function() manager:setContext(manager:getDefaultContext()) end) end
+    later(0.3, function()
+        if placing() then
+            a11y_log("[place] still placing after confirm (" .. barContext() .. "), back to the island")
+            pcall(function() manager:setContext(manager:getDefaultContext()) end)
+            closeGridPopup()
+        end
+    end)
     say("Placed", true)
 end
 
@@ -2743,10 +3152,50 @@ local function cancelPlacement()
     say("Placement cancelled", true)
 end
 
+-- Enter while placing: move the object to the cursor, then place it. First
+-- write the tile straight into the game (as freeAt does for a moment); if the
+-- game doesn't keep it, drag there instead.
+function menuState.placeHere()
+    local c = menuState.cur
+    if not c then confirmPlacement() return end
+    local f = menuState.freeAt and menuState.freeAt(c.x, c.y)
+    if f == false then say("Blocked here. Move with the arrow keys first.", true) return end
+    local tx, ty = c.x, c.y
+    local wrote = pcall(function() menuState.setTile(game.worldContext(), tx, ty) end)
+    later(0.15, function()
+        if not placing() then return end
+        local lx, ly = nil, nil
+        pcall(function() lx, ly = moveTileFn(game.worldContext()) end)
+        if wrote and lx == tx and ly == ty then
+            a11y_log("[place] direct tile write held at " .. tx .. "," .. ty)
+            menuState.cur = nil
+            confirmPlacement()
+            later(0.5, function()
+                local ex, ey = entityTile(selectedObject())
+                a11y_log("[place] after placing, object tile " .. tostring(ex) .. "," .. tostring(ey)
+                    .. " (wanted " .. tx .. "," .. ty .. ")")
+            end)
+            return
+        end
+        a11y_log("[place] direct tile write didn't hold (" .. tostring(lx) .. "," .. tostring(ly) .. "), dragging")
+        say("Moving it there", true)
+        menuState.dragTo(tx, ty, function(reached)
+            if reached then
+                menuState.cur = nil
+                confirmPlacement()
+            else
+                say("Couldn't move it all the way. " .. spotText(), true)
+            end
+        end)
+    end)
+end
+
 local function deselect()
+    local name = nil
+    pcall(function() name = selectedName() end)
     pcall(function() game.deselectSelectedObject() end)
     pcall(function() manager:setContext(manager:getDefaultContext()) end)
-    say("Deselected", true)
+    say(name and (name .. " deselected") or "Deselected", true)
 end
 
 -- ---------------------------------------------------------------------------
@@ -2927,6 +3376,11 @@ local function navMove(dir, edge)
         say(label .. ", " .. vmenu.index .. " of " .. n, true)
         return
     end
+    -- Placing: no list to move through. Say where it is and what to press.
+    if placing() and (not popupOpen() or menuState.sidePanels[currentPopupName()]) then
+        say(spotText() .. ". Enter places it, Escape cancels.", true)
+        return
+    end
     local t0 = clock()
     if not navEnsure() then                     -- nothing navigable
         if popupOpen() then say("Nothing to navigate in this dialog", true) end
@@ -3076,6 +3530,54 @@ function nav.muteGameEnter(skip)
         end)
     end }
 end
+
+-- Enter can open a screen (Bread -> "Would you like to bake Bread?"), and
+-- that new screen's Yes is mapped to Enter too: the game pressed it when the
+-- same Enter was released (or auto-repeated), buying before you chose. While
+-- Enter is physically down (a11y_key_down; 0.8 seconds if unavailable) and a
+-- quarter second after, keep every Enter-mapped button on every screen
+-- muted, then switch back on the ones this guard muted. Matched by identity
+-- each tick; no handle is kept.
+function nav.guardEnter()
+    local confirmKey = nil
+    pcall(function() confirmKey = tonumber(game.confirmButton()) end)
+    if not confirmKey or confirmKey == 0 then return end
+    local keyDown = resolve("a11y_key_down")
+    local start = clock()
+    local ids, releasedAt = {}, nil
+    local p = { t = start, stop = start + 3, everyTick = true }
+    p.fn = function(root, now)
+        local held = nil
+        if type(keyDown) == "function" then
+            local ok, v = pcall(keyDown, 13)
+            if ok and v ~= nil then held = v and true or false end
+        end
+        if held == nil then held = now - start < 0.8 end
+        if held then releasedAt = nil; p.stop = now + 1 else releasedAt = releasedAt or now end
+        local mute = releasedAt == nil or now - releasedAt < 0.25
+        eachEnterButton(root, confirmKey, function(el)
+            local id = tostring(el)
+            if mute then
+                pcall(function() el("buttonDown"):SetInt(0) end)
+                pcall(function()
+                    local touch = el["Touch"]
+                    if touch("enabled"):GetInt() ~= 0 then
+                        touch("enabled"):SetInt(0)
+                        if not ids[id] then a11y_log("[nav] Enter held: holding back " .. tostring(elementName(el))) end
+                        ids[id] = true
+                        isClickable.heldBack[id] = true
+                    end
+                end)
+            elseif ids[id] then
+                ids[id] = nil
+                isClickable.heldBack[id] = nil
+                pcall(function() el["Touch"]("enabled"):SetInt(1) end)
+            end
+        end)
+        if not mute and next(ids) == nil then p.finished = true end
+    end
+    pending[#pending + 1] = p
+end
 end -- do (Enter muting)
 
 -- After picking a monster on the breeding screen: what is chosen, what next.
@@ -3158,6 +3660,7 @@ local function navActivate()
         vmenu.active = false
         if vmenu.kind == "places" then say("Opening " .. dest[1], false) end
         pcall(nav.muteGameEnter)                -- before: the action may close screens
+        pcall(nav.guardEnter)
         menuState.touch()
         pcall(dest[2])
         return
@@ -3167,6 +3670,11 @@ local function navActivate()
         -- doKeyActions); pressing a focused button too would fight it.
         menuState.nameText = nil
         say("Saving the name", true)
+        return
+    end
+    pcall(nav.guardEnter)                       -- a screen this opens must not take the same Enter
+    if placing() and menuState.placeHere and (not popupOpen() or menuState.sidePanels[currentPopupName()]) then
+        menuState.placeHere()
         return
     end
     if not navEnsure() then return end
@@ -3278,7 +3786,7 @@ end
 
 local function doBack()
     if placing() then cancelPlacement() return end
-    if currentPopupName() == "showgrid_popup" then        -- leftover from placing
+    if currentPopupName() == "showgrid_popup" or currentPopupName() == "volume_popup" then  -- leftover from placing
         closeGridPopup()
         say("Back to the island", true)
         return

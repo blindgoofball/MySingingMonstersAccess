@@ -74,6 +74,11 @@ Only needed if `install.bat` doesn't work for you.
    ```
    Without this step the mod still talks, but most screens can't be navigated.
 
+## Guides
+
+- [tutorial.md](tutorial.md): the game's tutorial, step by step, with the keys to press at each step.
+- [getting-started.md](getting-started.md): what to do after the tutorial, from your daily routine to breeding, beds and minigames.
+
 ## Keys
 
 | Key | What it does |
@@ -83,8 +88,9 @@ Only needed if `install.bat` doesn't work for you.
 | Escape or Backspace | Go back: close the screen, cancel, answer No, or deselect. The game's own Escape is tried first. |
 | Home and End | Jump to the first or last item of the current list or screen. |
 | Left bracket and Right bracket | On the island: switch between groups (Buttons, Buildings, Monsters, Decorations, Trees and rocks). While placing an object: jump between nearby landmarks. |
-| Comma and Period | While placing an object: step through the free spots near where you are. |
-| Arrow keys | While placing an object: move it one tile. |
+| Arrow keys | While placing an object: move the placing cursor one tile and hear the spot (free or blocked, what is nearby, Likes close by). Nothing moves in the game until you press Enter. |
+| Enter and Escape | While placing an object: Enter places it where the cursor is, Escape cancels. Tab says the spot again. |
+| Comma and Period | While placing an object, after a bracket: step through the free spots next to that object. |
 | Control+Shift+A | Status: coins, diamonds, food, level and so on. |
 | Control+Shift+W | What now: things that are ready and your current goals. |
 | Control+Shift+M | Places: Market, Book of Monsters, Map, Goals, Friends, Mail, Options. |

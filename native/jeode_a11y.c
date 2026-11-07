@@ -889,6 +889,16 @@ static int JEODE_CALL j_a11y_touch(void *L)
     return 1;
 }
 
+/* a11y_key_down(vk) -> true while that key is physically held. Lets the Lua
+   side keep a screen that Enter just opened from taking the same Enter. */
+static int JEODE_CALL j_a11y_key_down(void *L)
+{
+    lua_State *ls = (lua_State *)L;
+    int vk = (int)lua_tonumber(ls, 1);
+    lua_pushboolean(ls, vk > 0 && vk < 256 && (GetAsyncKeyState(vk) & 0x8000) != 0);
+    return 1;
+}
+
 /* a11y_entity_tile(entity) -> x, y   (nil if unavailable) */
 static int JEODE_CALL j_a11y_entity_tile(void *L)
 {
@@ -1029,6 +1039,7 @@ JEODE_EXPORT int JEODE_CALL jeode_native_init(const struct JeodeNativeAPI *api)
     api->register_global("a11y_log",       j_a11y_log);
     api->register_global("a11y_click_fraction", j_a11y_click_fraction);
     api->register_global("a11y_touch", j_a11y_touch);
+    api->register_global("a11y_key_down", j_a11y_key_down);
     api->register_global("a11y_drag", j_a11y_drag);
     api->register_global("a11y_press_escape", j_a11y_press_escape);
     api->register_global("a11y_tutorial_step",  j_a11y_tutorial_step);
