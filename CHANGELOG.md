@@ -2,6 +2,23 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## 0.1.11-alpha - 2026-11-07
+
+### Added
+
+- A new guide, breeding-guide.md, says what to breed next once the game stops telling you: how breeding works, every combination on the first five islands, and what each breeding time means.
+- X (fallback Control+Shift+X) says your XP towards the next level, for example "Level 11. 1,250 of 5,000 XP, 25 percent. 3,750 XP to level 12".
+- The Time Machine's WARP screen only had a slider you couldn't move. It now says the current speed, for example "Speed 1.5 times, faster than normal", and has Faster, Slower and Normal speed buttons that change it in steps of 0.1, from half speed to double speed.
+- Single-letter keys: A for status, W for what now, X for XP, M for Places, O for the island objects, I for what a monster looks like, C to reset the camera and T to repeat the tutorial step. They do nothing while you are typing in a text box. The Control+Shift keys still work as fallbacks, and Control+Shift+L turns the single letters off or on if you prefer the fallbacks only. The choice is remembered, including across updates.
+
+### Improved
+
+- The breeding lists say each monster's elements, for example "Fwog, Earth and Water, breed with Noggin", so you can plan combinations without seeing the sigils.
+- Offers in the corner tray say their name instead of just "Offer", and opening an offer reads its title, description, price, contents and time left.
+- The likes count says "known likes", for example "1 of 3 known likes met", because the Likes screen shows a fourth slot for the mystery like, which stays a secret.
+- The loading screen was silent. It now says the loading status when it changes, for example "Downloading Game Data", and the game's tip, for example "Tip: The Clubbox can be hosted on Natural, Fire and Magical Islands." Control+Shift+A on the loading screen says how far along it is, for example "Downloading Game Data 45%".
+- Spin the Wheel (SPIN on the Castle) said nothing about the prize until you pressed Collect. When the wheel stops it now says what you won, for example "You won 7,200 Coins. Tab to Collect.", and the Collect button says the prize too.
+
 ## 0.1.10-alpha - 2026-11-07
 
 ### Added

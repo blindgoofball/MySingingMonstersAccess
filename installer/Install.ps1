@@ -85,9 +85,14 @@ if ((Test-Path $jeodeDll) -and (Test-Path $proxyDll)) {
 $modDest = Join-Path $GamePath "mods\msm-a11y"
 Say ""
 Say "Installing the mod into $modDest ..."
+# Keep the player's settings (settings.ini) across reinstalls and updates.
+$settingsFile = Join-Path $modDest "settings.ini"
+$savedSettings = $null
+if (Test-Path $settingsFile) { $savedSettings = Get-Content -Raw $settingsFile }
 if (Test-Path $modDest) { Remove-Item -Recurse -Force $modDest }
 New-Item -ItemType Directory -Force $modDest | Out-Null
 Copy-Item -Recurse -Force (Join-Path $ModSource "*") $modDest
+if ($null -ne $savedSettings) { [IO.File]::WriteAllText($settingsFile, $savedSettings) }
 
 if (-not (Test-Path (Join-Path $modDest "prism.dll"))) {
     Say "Warning: prism.dll is missing, so the mod will not be able to speak." Yellow

@@ -78,8 +78,11 @@ Only needed if `install.bat` doesn't work for you.
 
 - [tutorial.md](tutorial.md): the game's tutorial, step by step, with the keys to press at each step.
 - [getting-started.md](getting-started.md): what to do after the tutorial, from your daily routine to breeding, beds and minigames.
+- [breeding-guide.md](breeding-guide.md): what to breed next once the game stops telling you, island by island, with breeding times.
 
 ## Keys
+
+The single-letter keys (A, W, X, M, O, I, C, T) do nothing while a text box is open, such as renaming a monster, so you can type freely. Their Control+Shift fallbacks work everywhere. If you'd rather use only the Control+Shift keys, press **Control+Shift+L** to turn the single letters off (press it again to turn them back on). The choice is remembered, including across updates.
 
 | Key | What it does |
 | --- | --- |
@@ -91,13 +94,14 @@ Only needed if `install.bat` doesn't work for you.
 | Arrow keys | While placing an object: move the placing cursor one tile and hear the spot (free or blocked, what is nearby, Likes close by). Nothing moves in the game until you press Enter. |
 | Enter and Escape | While placing an object: Enter places it where the cursor is, Escape cancels. Tab says the spot again. |
 | Comma and Period | Previous and next item, like Shift+Tab and Tab. While placing an object, after a bracket: step through the free spots next to that object. In a text box they type as normal. |
-| Control+Shift+A | Status: coins, diamonds, food, level and so on. |
-| Control+Shift+W | What now: things that are ready and your current goals. |
-| Control+Shift+M | Places: Market, Book of Monsters, Map, Goals, Friends, Mail, Options. |
-| Control+Shift+O | A list of everything on your island. |
-| Control+Shift+I | With a monster selected: what it looks like, and its elements. Descriptions are written from the game's own pictures and cover the natural monsters so far (Plant Island and the other early islands); more will be added. |
-| Control+Shift+C | Put the camera back on the whole island (the game's default view). |
-| Control+Shift+T | Repeat the current tutorial step. |
+| A (fallback: Control+Shift+A) | Status: coins, diamonds, food, level and so on. On the loading screen, how far loading has got. |
+| W (fallback: Control+Shift+W) | What now: things that are ready and your current goals. |
+| X (fallback: Control+Shift+X) | XP: how much you have towards the next level and how much is left. |
+| M (fallback: Control+Shift+M) | Places: Market, Book of Monsters, Map, Goals, Friends, Mail, Options. |
+| O (fallback: Control+Shift+O) | A list of everything on your island. |
+| I (fallback: Control+Shift+I) | With a monster selected: what it looks like, and its elements. Descriptions are written from the game's own pictures and cover the natural monsters so far (Plant Island and the other early islands); more will be added. |
+| C (fallback: Control+Shift+C) | Put the camera back on the whole island (the game's default view). |
+| T (fallback: Control+Shift+T) | Repeat the current tutorial step. |
 | Control+Shift+Enter | Continue the tutorial. |
 | Control+Shift+D | Write a diagnostic snapshot of the current screen to the log (for bug reports). |
 

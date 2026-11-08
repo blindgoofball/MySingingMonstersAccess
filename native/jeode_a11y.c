@@ -71,7 +71,8 @@ static int game_is_foreground(void)
    jeode.registerGlobal) and runs on the game thread through queue_lua -- a safe
    frame boundary. Nav handlers are silent when no real popup is open, so plain
    Tab/Enter during normal play are harmless no-ops. */
-enum { HK_HUD = 0, HK_NAV_NEXT, HK_NAV_PREV, HK_ACTIVATE, HK_MENU, HK_TUTORIAL, HK_TUTSTEP, HK_DUMP, HK_OBJECTS, HK_LEFT, HK_RIGHT, HK_UP, HK_DOWN, HK_WHATNOW, HK_ESCAPE, HK_BACKSPACE, HK_POI_PREV, HK_POI_NEXT, HK_SPOT_PREV, HK_SPOT_NEXT, HK_CAMERA, HK_HOME, HK_END, HK_LOOKS, HK_COUNT };
+enum { HK_HUD = 0, HK_NAV_NEXT, HK_NAV_PREV, HK_ACTIVATE, HK_MENU, HK_TUTORIAL, HK_TUTSTEP, HK_DUMP, HK_OBJECTS, HK_LEFT, HK_RIGHT, HK_UP, HK_DOWN, HK_WHATNOW, HK_ESCAPE, HK_BACKSPACE, HK_POI_PREV, HK_POI_NEXT, HK_SPOT_PREV, HK_SPOT_NEXT, HK_CAMERA, HK_HOME, HK_END, HK_LOOKS,
+       HK_P_HUD, HK_P_WHATNOW, HK_P_MENU, HK_P_OBJECTS, HK_P_LOOKS, HK_P_CAMERA, HK_P_TUTSTEP, HK_LETTERS, HK_XP, HK_P_XP, HK_COUNT };
 
 static const char *const g_hkLua[HK_COUNT] = {
     /* HK_HUD (Ctrl+Shift+A) */
@@ -118,7 +119,56 @@ static const char *const g_hkLua[HK_COUNT] = {
     "if type(a11y_navEdge)=='function' then a11y_navEdge(1) end",
     /* HK_LOOKS (Ctrl+Shift+I) -- what the selected monster looks like */
     "if type(a11y_appearance)=='function' then a11y_appearance() end",
+    /* Plain-letter versions of the Ctrl+Shift keys (those stay as fallbacks).
+       a11y_plainKey runs the named command unless a text box is open. */
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('hud') end",
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('whatnow') end",
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('menu') end",
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('objects') end",
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('looks') end",
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('camera') end",
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('tutstep') end",
+    /* HK_LETTERS (Ctrl+Shift+L) -- handled natively (settings_toggle_letters) */
+    "",
+    /* HK_XP (Ctrl+Shift+X) / HK_P_XP (X) -- XP to the next level */
+    "if type(a11y_xp)=='function' then a11y_xp() end",
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('xp') end",
 };
+
+/* ---------------------------------------------------------------------------
+   Settings: mods\msm-a11y\settings.ini next to this DLL. Survives updates
+   (the release zip has no settings.ini). [keys] single_letters=1/0 turns the
+   plain-letter keys (A, W, M, O, I, C, T) on or off; Ctrl+Shift+L toggles it.
+   --------------------------------------------------------------------------- */
+static volatile LONG g_lettersOn = 1;
+static char g_settingsPath[MAX_PATH] = "";
+
+static void settings_load(void)
+{
+    HMODULE self = NULL;
+    char *slash;
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            (LPCSTR)&settings_load, &self))
+        return;
+    if (!GetModuleFileNameA(self, g_settingsPath, MAX_PATH)) { g_settingsPath[0] = 0; return; }
+    slash = strrchr(g_settingsPath, '\\');
+    if (!slash || (size_t)(slash - g_settingsPath) + 14 >= MAX_PATH) { g_settingsPath[0] = 0; return; }
+    strcpy(slash + 1, "settings.ini");
+    InterlockedExchange(&g_lettersOn, GetPrivateProfileIntA("keys", "single_letters", 1, g_settingsPath) ? 1 : 0);
+    A11Y_Log("Settings: %s, single_letters=%ld", g_settingsPath, g_lettersOn);
+}
+
+static void settings_toggle_letters(void)
+{
+    LONG on = InterlockedExchange(&g_lettersOn, g_lettersOn ? 0 : 1) ? 0 : 1;
+    if (g_settingsPath[0])
+        WritePrivateProfileStringA("keys", "single_letters", on ? "1" : "0", g_settingsPath);
+    if (g_api && g_api->is_lua_ready())
+        g_api->queue_lua(on
+            ? "if type(a11y_speak)=='function' then a11y_speak('Single-letter keys on',true) end"
+            : "if type(a11y_speak)=='function' then a11y_speak('Single-letter keys off. Use the Control Shift keys.',true) end",
+            "=a11y_hotkey");
+}
 
 static unsigned __stdcall HotkeyProc(void *param)
 {
@@ -131,6 +181,7 @@ static unsigned __stdcall HotkeyProc(void *param)
     for (i = 0; i < HK_COUNT; i++) { prev[i] = 0; last[i] = 0; since[i] = 0; }
 
     A11Y_Log("Hotkey thread started (Ctrl+Shift+A = HUD; Tab/Shift+Tab/Enter = nav)");
+    settings_load();
 
     while (InterlockedCompareExchange(&g_hotkeyRunning, 1, 1)) {
         int ctrl  = KEY_DOWN(VK_CONTROL) ? 1 : 0;
@@ -162,6 +213,19 @@ static unsigned __stdcall HotkeyProc(void *param)
         down[HK_HOME]      = !shift && !ctrl && KEY_DOWN(VK_HOME);
         down[HK_END]       = !shift && !ctrl && KEY_DOWN(VK_END);
         down[HK_LOOKS]     = ctrl && shift && KEY_DOWN('I');
+        {
+            int plain = !ctrl && !shift && !KEY_DOWN(VK_MENU) && g_lettersOn;
+            down[HK_P_HUD]     = plain && KEY_DOWN('A');
+            down[HK_P_WHATNOW] = plain && KEY_DOWN('W');
+            down[HK_P_MENU]    = plain && KEY_DOWN('M');
+            down[HK_P_OBJECTS] = plain && KEY_DOWN('O');
+            down[HK_P_LOOKS]   = plain && KEY_DOWN('I');
+            down[HK_P_CAMERA]  = plain && KEY_DOWN('C');
+            down[HK_P_TUTSTEP] = plain && KEY_DOWN('T');
+            down[HK_P_XP]      = plain && KEY_DOWN('X');
+        }
+        down[HK_LETTERS]   = ctrl && shift && KEY_DOWN('L');
+        down[HK_XP]        = ctrl && shift && KEY_DOWN('X');
 
         for (i = 0; i < HK_COUNT; i++) {
             /* Keys that only move focus or the placing cursor (no game action):
@@ -184,7 +248,9 @@ static unsigned __stdcall HotkeyProc(void *param)
             }
             if (fire) {
                 last[i] = now;
-                if (game_is_foreground() && g_api && g_api->is_lua_ready()) {
+                if (i == HK_LETTERS) {
+                    if (game_is_foreground()) settings_toggle_letters();
+                } else if (game_is_foreground() && g_api && g_api->is_lua_ready()) {
                     if (i == HK_HUD) A11Y_Log("Ctrl+Shift+A -> HUD announce");
                     g_api->queue_lua(g_hkLua[i], "=a11y_hotkey");
                 }

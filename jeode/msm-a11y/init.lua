@@ -658,8 +658,13 @@ local function socialLabel(el, name)
         local parts = {}
         local promo = nil; pcall(function() promo = p.promo end)
         local function field(k)
+            -- The promo's fields are methods (ComboPack.lua: promo:storeItemTitle()).
             local v = nil
             pcall(function() v = promo[k] end)
+            if type(v) == "function" then
+                local f = v; v = nil
+                pcall(function() v = f(promo) end)
+            end
             if type(v) ~= "string" or v == "" then return nil end
             v = cleanText(localize(v) or v)
             return (v and v ~= "") and v or nil
@@ -735,6 +740,8 @@ local function socialLabel(el, name)
             end
             if species then species = FRIENDLY.__withRarity(species, tonumber(tid)) end
             if species and species ~= parts[1] then parts[#parts + 1] = species end
+            local els = tid and FRIENDLY.__elementsOf(tid)
+            if els then parts[#parts + 1] = els end
             local feed = findNamed(el, "feed_overlay", 1)
             local need = feed and isVisible(feed) and elementText(feed)
             if need then parts[#parts + 1] = need end
@@ -1041,6 +1048,14 @@ local function collectControls(root, out, depth, group)
                 out[#out + 1] = { el = { virtual = function() FRIENDLY.__flip.turn(i) end }, label = lbl }
             end
             child = nil
+        elseif cname == "Slider" and FRIENDLY.__warp and elementName(root) == "warp_popup" then
+            -- Time Machine's WARP slider only answers dragging: buttons instead.
+            local W = FRIENDLY.__warp
+            out[#out + 1] = { el = { virtual = function() say(W.text(), true) end }, label = W.text() }
+            out[#out + 1] = { el = { virtual = function() W.step(0.1) end }, label = "Faster" }
+            out[#out + 1] = { el = { virtual = function() W.step(-0.1) end }, label = "Slower" }
+            out[#out + 1] = { el = { virtual = function() W.set(1.0) end }, label = "Normal speed" }
+            child = nil
         elseif cname == "Layout" and FRIENDLY.__conundrum and elementName(root) == "MainPanel" then
             -- Colossal Conundrum puzzle: progress as one item.
             local text = FRIENDLY.__conundrum(root)
@@ -1057,7 +1072,7 @@ local function collectControls(root, out, depth, group)
                 local st = FRIENDLY.__likeStatus(game.selectedMonsterId())
                 if st then
                     text = "Likes: " .. table.concat(st.items, "; ") .. "; and a mystery like. "
-                        .. st.met .. " of " .. st.total .. " met"
+                        .. st.met .. " of " .. st.total .. " known likes met"
                 end
             end)
             if not text then pcall(function() text = FRIENDLY.__likes(game.selectedMonsterTypeId()) end) end
@@ -1082,6 +1097,10 @@ local function collectControls(root, out, depth, group)
             if isClickable(child) and (isRow or not hasClickableDescendant(child, 0)) then
                 local lbl, final = controlLabel(child, cname)
                 -- Market items: the price is a number with a currency icon.
+                if lbl and cname == "Button" and FRIENDLY.__spinPrize and elementName(root) == "minigame_spinprize" then
+                    local prize = FRIENDLY.__spinPrize()
+                    if prize then lbl = lbl .. ", " .. prize end
+                end
                 if lbl and cname and cname:find("^storeItem%d+$") and FRIENDLY.__storePrice then
                     pcall(function() lbl = FRIENDLY.__storePrice(child, lbl) end)
                 end
@@ -1368,6 +1387,8 @@ local function menuTick(root, file)
     if file == "contextbar" and contextbarHook then pcall(contextbarHook) end
     if file == "hud" and readyHook then pcall(readyHook, now) end
     if file == "popup_name_entry" and menuState.nameEcho then pcall(menuState.nameEcho, root) end
+    if file == "minigame_spinprize" and FRIENDLY.__spinTick then pcall(FRIENDLY.__spinTick, root) end
+    if file == "login_base" and FRIENDLY.__loadingTick then pcall(FRIENDLY.__loadingTick, root) end
     if walletHook then pcall(walletHook, now) end
     if menuState.levelWatch then pcall(menuState.levelWatch, now) end
     local m = menus[file]
@@ -1979,6 +2000,21 @@ FRIENDLY.__looks = {
     g = "A ghostly, see-through purple creature with golden eyes and a wide, fanged smile.",
 }
 FRIENDLY.__elementLetters = { a = "Air", b = "Plant", c = "Earth", d = "Water", e = "Cold" }
+-- A monster type's Natural elements as words ("Earth and Water"), and how
+-- many, from game.monsterTypeGenes. nil for other elements (Ethereal etc.).
+function FRIENDLY.__elementsOf(tid)
+    local genes = nil
+    pcall(function() genes = tostring(game.monsterTypeGenes(tid)) end)
+    local base = genes and genes:lower():gsub("[^%a]", "")
+    if not base or not base:find("^[a-e]+$") then return nil end
+    local letters = {}
+    for ch in base:gmatch(".") do letters[#letters + 1] = ch end
+    table.sort(letters)
+    local els = {}
+    for _, ch in ipairs(letters) do els[#els + 1] = FRIENDLY.__elementLetters[ch] end
+    if #els == 1 then return els[1], 1 end
+    return table.concat(els, ", ", 1, #els - 1) .. " and " .. els[#els], #els
+end
 function FRIENDLY.__appearance()
     local isMonster = false
     pcall(function() isMonster = game.selectedObjIsMonster() and true or false end)
@@ -2015,12 +2051,8 @@ function FRIENDLY.__appearance()
     local parts = { name }
     local desc = base and FRIENDLY.__looks[base]
     parts[#parts + 1] = desc or "No description yet"
-    if base and base:find("^[a-e]+$") then
-        local els = {}
-        for ch in base:gmatch(".") do els[#els + 1] = FRIENDLY.__elementLetters[ch] end
-        local list = #els == 1 and els[1] or (table.concat(els, ", ", 1, #els - 1) .. " and " .. els[#els])
-        parts[#parts + 1] = (#els == 1 and "Element: " or "Elements: ") .. list
-    end
+    local list, count = FRIENDLY.__elementsOf(tid)
+    if list then parts[#parts + 1] = (count == 1 and "Element: " or "Elements: ") .. list end
     say(joinSentences(parts), true)
 end
 
@@ -2209,6 +2241,167 @@ POPUP_READERS.flip_base = function(popup)
     FRIENDLY.__flip.pending = nil
     return joinSentences({ "Memory game", FRIENDLY.__flip.status(popup),
         "Tab to a card and press Enter to turn it over. Find the matching pairs" })
+end
+
+-- Spin the Wheel (minigame_spinprize.xml): the prize is known once the wheel
+-- stops (game.getSpinWheelRewardAmount / getSpinWheelRewardType), before
+-- Collect is pressed. Said when the Collect button appears.
+FRIENDLY.__spin = { said = false }
+function FRIENDLY.__spinPrize()
+    local amt, kind = nil, nil
+    pcall(function() amt = game.getSpinWheelRewardAmount() end)
+    pcall(function() kind = tostring(game.getSpinWheelRewardType()) end)
+    if not kind or kind == "" or kind == "nil" then return nil end
+    local words = { coins = "Coins", diamonds = "Diamonds", food = "Food", keys = "Keys", relics = "Relics",
+                    clubboxtokens = "Clubbox Tokens", shards = "Shards", starpower = "Starpower" }
+    local word = words[kind:lower()] or kind
+    local num = nil
+    pcall(function() num = game.commaizeNumber(amt) end)
+    num = num or (amt and tostring(amt))
+    if not num or num == "0" then return word end
+    return num .. " " .. word
+end
+function FRIENDLY.__spinTick(root)
+    local btn = findNamed(root, "Button", 3)
+    local collecting = btn and isVisible(btn) and elementText(btn) ~= nil
+    if collecting and not FRIENDLY.__spin.said then
+        FRIENDLY.__spin.said = true
+        local prize = FRIENDLY.__spinPrize()
+        a11y_log("[spin] prize " .. tostring(prize))
+        later(0.3, function() say("You won " .. (prize or "a prize") .. ". Tab to Collect.", true) end)
+    elseif not collecting then
+        FRIENDLY.__spin.said = false
+    end
+end
+-- Loading screen (login_base): the status line ("Downloading Game Data")
+-- whenever it changes, and the game's tip once per load. Never interrupts.
+FRIENDLY.__loading = { status = nil, tip = nil }
+function FRIENDLY.__loadingTick(root)
+    local L = FRIENDLY.__loading
+    local status = shownText(root, "ConnectionStatus")
+    -- "Downloading Game Data 45%": drop the percentage, so it is said once
+    -- per step rather than at every percent.
+    if status then
+        status = status:gsub("%(?%s*%d+%.?%d*%s*%%%s*%)?", ""):gsub("%s*%d+%s*/%s*%d+", "")
+            :gsub("[%s%.:,%-]+$", ""):gsub("^%s+", "")
+        if status == "" then status = nil end
+    end
+    local tip = shownText(root, "ToolTip")
+    local parts = {}
+    if status and status ~= L.status then
+        L.status = status
+        parts[#parts + 1] = status
+    end
+    if tip and tip ~= L.tip then
+        L.tip = tip
+        parts[#parts + 1] = "Tip: " .. tip
+    end
+    if #parts > 0 then say(joinSentences(parts), false) end
+end
+
+-- Time Machine WARP (warp_popup.xml): game.timeWarpSpeed / setTimeWarpSpeed,
+-- 0.5 to 2, 1 is normal. The slider's knob is moved to match, with the
+-- same formula the menu's onInit uses.
+FRIENDLY.__warp = {}
+function FRIENDLY.__warp.get()
+    local v = 1
+    pcall(function() v = tonumber(game.timeWarpSpeed()) or 1 end)
+    return v
+end
+function FRIENDLY.__warp.text()
+    local v = FRIENDLY.__warp.get()
+    local r = math.floor(v * 10 + 0.5) / 10
+    local t = string.format("%.1f", r):gsub("%.0$", "")
+    if r == 1 then return "Speed normal" end
+    return "Speed " .. t .. " times, " .. (r > 1 and "faster" or "slower") .. " than normal"
+end
+function FRIENDLY.__warp.set(v)
+    v = math.max(0.5, math.min(2.0, math.floor(v * 10 + 0.5) / 10))
+    pcall(function() game.setTimeWarpSpeed(v) end)
+    later(0.05, function()
+        local root = liveMenu("warp_popup")
+        local slider = root and findNamed(root, "Slider", 3)
+        if slider then
+            pcall(function()
+                local w = slider:absW()
+                local x = v >= 1 and (w / 2) * (v - 1) or w * (v - 1)
+                slider:C("Sprite")("xOffset"):SetInt(math.floor(x + 0.5))
+            end)
+        end
+    end)
+    say(FRIENDLY.__warp.text(), true)
+end
+function FRIENDLY.__warp.step(d)
+    FRIENDLY.__warp.set(FRIENDLY.__warp.get() + d)
+end
+POPUP_READERS.warp_popup = function(popup)
+    return joinSentences({ shownText(popup, "Label") or "Time Warper", FRIENDLY.__warp.text(),
+        "Tab to Faster, Slower or Normal speed. Escape when done" })
+end
+
+-- XP to the next level (X / Control+Shift+X). CurrencyCounterAvatarXP.lua
+-- fills the level ring with game.playerCurrentXp() / game.playerXpForLevel().
+function FRIENDLY.__xp()
+    local lvl, maxLvl, cur, need = nil, nil, nil, nil
+    pcall(function() lvl = tonumber(game.playerLevel()) end)
+    pcall(function() maxLvl = tonumber(game.maxPlayerLevel()) end)
+    pcall(function() cur = tonumber(game.playerCurrentXp()) end)
+    pcall(function() need = tonumber(game.playerXpForLevel()) end)
+    if not need and lvl then pcall(function() need = tonumber(game.playerXpForLevel(lvl + 1)) end) end
+    a11y_log("[xp] level " .. tostring(lvl) .. " max " .. tostring(maxLvl) .. " current " .. tostring(cur) .. " for level " .. tostring(need))
+    local function num(n)
+        local t = nil
+        pcall(function() t = game.commaizeNumber(n) end)
+        return t or tostring(math.floor(n))
+    end
+    if lvl and maxLvl and lvl >= maxLvl then say("Level " .. lvl .. ", the highest level", true) return end
+    if not cur or not need or need <= 0 then say("XP not available", true) return end
+    local left = math.max(0, need - cur)
+    local pct = math.floor(cur * 100 / need)
+    say((lvl and ("Level " .. lvl .. ". ") or "") .. num(cur) .. " of " .. num(need) .. " XP, " .. pct .. " percent. "
+        .. num(left) .. " XP to level " .. (lvl and (lvl + 1) or "the next level"), true)
+end
+
+POPUP_READERS.minigame_spinprize = function(popup)
+    local parts = { "Spin the Wheel" }
+    local desc = shownText(popup, "Description")
+    if desc then parts[#parts + 1] = desc end
+    return joinSentences(parts)
+end
+
+-- Offer popup (ComboPack.lua): title, description, price tag and what's in it.
+POPUP_READERS.combo_pack = function(popup)
+    local parts = {}
+    local title = shownText(popup, "TitleText")
+    parts[#parts + 1] = "Offer" .. (title and (": " .. title) or "")
+    local desc = shownText(popup, "DescriptionText")
+    if desc then parts[#parts + 1] = desc end
+    local pct = shownText(popup, "PercentageLabel")
+    if pct then parts[#parts + 1] = pct end
+    local old = shownText(popup, "OldValue")
+    if old then parts[#parts + 1] = "Was " .. old end
+    local tag = shownText(popup, "TagValue")
+    if tag then parts[#parts + 1] = tag end
+    -- The bundle's items: every shown text under Bundle, once each.
+    local seen, items = {}, {}
+    local function walk(el, depth)
+        if not el or depth > 6 then return end
+        local t = nil
+        pcall(function() if el.Text("visible"):GetInt() ~= 0 then t = elementText(el) end end)
+        if t and not t:find("^[%.%s]*$") and not seen[t] then seen[t] = true; items[#items + 1] = t end
+        local kids = nil; pcall(function() kids = el:elements() end)
+        local n = 0; pcall(function() n = kids:size() end)
+        for i = 0, n - 1 do
+            local c = nil; pcall(function() c = kids[i] end)
+            walk(c, depth + 1)
+        end
+    end
+    walk(findNamed(popup, "Bundle", 3), 0)
+    if #items > 0 then parts[#parts + 1] = "Contains: " .. table.concat(items, ", ") end
+    local time = shownText(popup, "OfferTime")
+    if time then parts[#parts + 1] = time end
+    a11y_log("[offer] " .. table.concat(parts, " | "))
+    return joinSentences(parts)
 end
 
 POPUP_READERS.minigame_doorprize = function(popup)
@@ -2693,7 +2886,7 @@ local function monsterStatus(uid)
         end
         local st = nil
         pcall(function() st = FRIENDLY.__likeStatus(uid) end)
-        if st then parts[#parts + 1] = st.met .. " of " .. st.total .. " likes met" end
+        if st then parts[#parts + 1] = st.met .. " of " .. st.total .. " known likes met" end
     end
     local coins = 0
     pcall(function() coins = game.monsterEarnings(uid) or 0 end)
@@ -4968,7 +5161,15 @@ shared.a11y = {
 -- native hotkeys, which run via queue_lua in the game state, can reach them.
 -- `shared` alone isn't visible there; jeode.registerGlobal is.
 if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
-    jeode.registerGlobal("a11y_announceHud", announceHud)
+    -- On the loading screen, status is the loading line with its percentage
+    -- ("Downloading Game Data 45%"), which the automatic message leaves out.
+    nav.hudKey = function()
+        local root = liveMenu("login_base")
+        local status = root and shownText(root, "ConnectionStatus")
+        if status then say(status, true) return end
+        announceHud()
+    end
+    jeode.registerGlobal("a11y_announceHud", nav.hudKey)
     jeode.registerGlobal("a11y_announcePopup", announceCurrentPopup)
     jeode.registerGlobal("a11y_navNext", function() navMove(1) end)
     jeode.registerGlobal("a11y_navPrev", function() navMove(-1) end)
@@ -4986,6 +5187,24 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
     jeode.registerGlobal("a11y_arrow", arrow)
     jeode.registerGlobal("a11y_whatnow", whatNow)
     jeode.registerGlobal("a11y_appearance", function() FRIENDLY.__appearance() end)
+    jeode.registerGlobal("a11y_xp", function() FRIENDLY.__xp() end)
+    -- Plain letters A, W, M, O, I, C, T: the same as their Control+Shift
+    -- fallbacks, except while a text box is open (typing a name).
+    jeode.registerGlobal("a11y_plainKey", function(what)
+        if nav.textEntryOpen and nav.textEntryOpen() then return end
+        local run = {
+            hud = nav.hudKey,
+            whatnow = whatNow,
+            menu = openPlaces,
+            objects = openObjects,
+            looks = function() FRIENDLY.__appearance() end,
+            camera = nav.cameraKey,
+            tutstep = announceTutorialStep,
+            xp = function() FRIENDLY.__xp() end,
+        }
+        local fn = run[what]
+        if fn then fn() end
+    end)
     jeode.registerGlobal("a11y_back", goBack)
     -- Comma and Period: free spots while placing, otherwise the same as
     -- Shift+Tab and Tab (Shift+Tab also opens the Steam overlay). Left alone
@@ -4997,7 +5216,7 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
     end)
     -- Control Shift C: the game's own default island view (what it uses after
     -- the island fanfare). Placing re-centres on the object at the next arrow.
-    jeode.registerGlobal("a11y_camera", function()
+    nav.cameraKey = function()
         local ok, err = pcall(function() game.setDefaultCameraSettings() end)
         if not ok then
             a11y_log("[camera] setDefaultCameraSettings failed: " .. tostring(err))
@@ -5006,7 +5225,8 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
         end
         placeAt.t = -100
         say("Camera reset to the whole island", true)
-    end)
+    end
+    jeode.registerGlobal("a11y_camera", nav.cameraKey)
     jeode.registerGlobal("a11y_poi", function(dir)
         if placing() then poiStep(dir) else navGroupJump(dir) end
     end)
