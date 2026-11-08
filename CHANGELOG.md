@@ -2,6 +2,27 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## 0.1.12-alpha - 2026-11-08
+
+### Added
+
+- Rare and Epic eggs shimmer in the Nursery, and now the mod describes it too, for example "Nursery, egg hatching, 5 hours left, the egg sparkles with a soft shimmer: a Rare egg!" It doesn't say which monster, just like the shimmer.
+- Colossingum battles talk: each move is spoken as it's played, then both monsters' health when it changes (for example "Chewy 10 of 10 health, Toe Jammer 4 of 10 health"), and "Your turn" when you can pick a move. A (fallback Control+Shift+A) in battle says both monsters' health. The results screen says Victory or Defeat and what you won, and TRAIN on a monster reads the power and stamina gain, any new move, the training time and the cost.
+- The game's Breeding Guide (GUIDE on the Breeding Structure) was six silent pictures. The mod now reads each page's words and describes its picture as you press Next and Back.
+- Once you pick the first monster to breed, the other list says what each pair can make, for example "can make T-Rox, Earth, Water and Cold", or warns "both Cold, usually gives one of the parents". Picking the second monster says it too.
+
+### Improved
+
+- A monster's INFO page reads the tab you're on: Bio reads the monster's description, Stats lists each stat with its value (as the game words them), and Likes lists its likes. Before, every tab showed the likes and Bio and Stats said nothing.
+- The Market crashes much less often. The crash is a bug in the game itself (while switching to the Market, its own bar keeps reading memory it has already freed), and anything the mod did at that moment made it far more likely. Now the mod stays out of the way while the game switches places: for about 4 seconds after you open or leave the Market (or the Map, a battle, a Places entry), keys only say "Loading" once and do nothing, and the game's bar is paused while the Market is open. Crashes can still happen occasionally; if one does, just restart the game.
+- UPGRADE and SPEED UP say what they cost, for example "Upgrade, 25,000 Coins" (with the sale price when there is one) or "Speed up, 7 Diamonds", including SPEED UP on the breeding screen.
+- A tutorial step the game has no text for (it shows a code like BATT_TUT_01_02b_OTHER_DMG_EXPOSITION) now says "This tutorial step has no text in the game" instead of reading the code.
+- On the Colossingum, the Monsters list no longer mentions feeding, likes or coins, which don't exist there. It says the level, and "training in the Conservatory" while a monster trains.
+- OCCUPANTS (such as the Colossingum's Mess Hall) said "Nothing to navigate". It now says how many beds are occupied, or that no monsters are staying there. Jukebox tunes you haven't unlocked say "locked".
+- Colossingum quests: the Team and Opponents tabs were missing, so you couldn't put a monster on your team and Start Battle said "Your current Team doesn't meet the requirements". The tabs are now there, team slots say "Team slot 1: empty. Enter to choose a monster" (or the monster in it), opponents say who they are, and StartBattle is "Start battle". SELECT MONSTER now shows only the monsters to choose from. In battle, your moves were missing; they now say their name and type, and whether they're locked or have an elemental advantage.
+- INFO on a building (Wishing Torch, Bakery and so on) said "Likes: nothing", as if it were a monster. It now reads the building's name, its description and any time left, and a torch says whether it's lit.
+- Wishing Torch buttons had two identical LIGHT buttons and an "UNHIGHLIGHTED" button. They now say "Light for a day, 2 Diamonds", "Light permanently, 100 Diamonds", "Highlight for friends: off" (or on) and "Buy another torch" with its price. Selecting a torch says whether it's lit and how long it has left, for example "Wishing Torch selected, lit, 23 hours 50 minutes left". The Objects list says "Wishing Torch, lit" or "not lit" too.
+
 ## 0.1.11-alpha - 2026-11-07
 
 ### Added

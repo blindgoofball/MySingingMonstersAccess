@@ -2,13 +2,14 @@
 
 At some point the game stops telling you what to breed. Sighted players are expected to look at each monster's element symbols (the game calls them sigils) and work out the combinations themselves, and we can't see those symbols. So this guide holds your hand a bit: how breeding decides what you get, what to breed next on each of the first islands, and how long each kind of egg takes.
 
-The combinations come from fan-made breeding charts, checked against each other, and from the game's own tips. Big Blue Bubble doesn't publish exact odds, so nobody outside the company knows the real percentages. Where I say something is likely or unlikely, that's from players' experience, not official numbers. The game can also change things in an update, so if something here doesn't work, let me know.
+The rules come from the game's own Breeding Guide (the GUIDE button on the Breeding Structure, which the mod now reads aloud) and its loading tips. The combinations come from fan-made breeding charts. Big Blue Bubble doesn't publish exact odds, so nobody outside the company knows the real percentages. Where I say something is likely or unlikely, that's from players' experience, not official numbers. The game can also change things in an update, so if something here doesn't work, let me know.
 
 ## How breeding works
 
 - Every monster is made of elements. The five Natural elements are Plant, Cold, Air, Water and Earth.
 - A baby gets its elements from its parents. Breed a one-element monster with a different one-element monster and you can get the two-element monster that has both. For example, Noggin (Earth) and Toe Jammer (Water) can give you Fwog (Earth and Water).
-- It isn't guaranteed. Often you get a copy of one of the parents, or a monster with only some of the parents' elements. That's normal. Breed the same pair again.
+- It isn't guaranteed. Often you get a copy of one of the parents. That's normal. Breed the same pair again.
+- The parents must not share an element. The game's Breeding Guide says that if an element is repeated, the baby will be one of the parents. Mammott (Cold) with Drumpler (Earth and Cold) only ever gives a Mammott or a Drumpler, but Mammott (Cold) with Fwog (Earth and Water) can give T-Rox. The only exceptions are special monsters (Ethereals, Seasonals, Mythicals and Epics), which have secret combinations of their own.
 - Your parents aren't used up. Both stay on the island, so you can breed the same pair as often as you like.
 - The order doesn't matter. Noggin with Toe Jammer is the same as Toe Jammer with Noggin.
 - Both parents must be at least level 4. Feed them food from the Bakery (select the monster, then FEED) to level them up. The breeding list tells you when a monster isn't ready, for example "Requires Level 4".
@@ -17,7 +18,8 @@ The combinations come from fan-made breeding charts, checked against each other,
 
 ## How the mod helps
 
-- The breeding lists say each monster's elements, for example "Fwog, Earth and Water", and the second list says which monsters will "breed with" the one you picked first. Put the elements of your two picks together and you know the best you can get: Fwog (Earth and Water) with Mammott (Cold) can give T-Rox (Earth, Water and Cold).
+- The breeding lists say each monster's elements, for example "Fwog, Earth and Water". Once you've picked the first monster, every row in the other list also says what the pair can make, for example "Mammott, Cold, breed with Fwog, can make T-Rox, Earth, Water and Cold", or warns you, for example "both Cold, usually gives one of the parents". When you pick the second monster you hear it again.
+- The GUIDE button on the Breeding Structure opens the game's own Breeding Guide. Its pages are pictures, so the mod reads out their words and describes the pictures.
 - I (fallback Control+Shift+I) on a selected monster says what it looks like and its elements. That's the sigil information sighted players get.
 - When breeding finishes, the Breeding Structure screen says "You've bred (monster)", so you always find out what you got.
 - The Book of Monsters says which monsters you've collected and which you haven't, so you can see what's left to breed.

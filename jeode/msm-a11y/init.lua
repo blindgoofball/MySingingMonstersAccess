@@ -421,6 +421,10 @@ local FRIENDLY = {
     RelicCounter = "Relics", StarCounter = "Star power",
     BattleButton = "Battle", DailyLoginButton = "Daily login", CalendarButton = "Calendar",
     ShowAll = "Show all", Featured = "Featured",
+    -- Colossingum quests (template_battle_campaign_infopane.xml).
+    TeamTab = "Team tab: your monsters for this battle", OpponentsTab = "Opponents tab",
+    StartBattleButton = "Start battle", ProgressInfoButton = "Quest stages and rewards",
+    SMP_CLOSE = "Close",
 }
 -- Names that are decoration/containers/backgrounds -- never a navigable control.
 local function isChrome(name)
@@ -652,6 +656,64 @@ local function socialLabel(el, name)
         local island = elementText(findNamed(p, "IslandName", 1))
         return (elementText(el) or "Go") .. (island and (", travel to " .. island) or ""), true
     end
+    -- Battle moves (template_battle_action_button): the move's name and type
+    -- are text components on the button itself, not child elements.
+    if pn == "ActionBar" and name:find("^ActionButton%d$") then
+        local function ctext(c)
+            local t = nil
+            pcall(function()
+                if el[c]("visible"):GetInt() ~= 0 then t = cleanText(el[c]("text"):GetString()) end
+            end)
+            return (t and t ~= "") and t or nil
+        end
+        local locked = 0; pcall(function() locked = el("locked"):GetInt() end)
+        local n = tonumber(name:match("%d")) + 1
+        if locked == 1 then return "Move " .. n .. ": locked", true end
+        local parts = { ctext("ActionName") or ("Move " .. n) }
+        local kind = ctext("ActionTypeName")
+        if kind then parts[#parts + 1] = kind end
+        local res = 0; pcall(function() res = el("elementalResistance"):GetFloat() end)
+        if res > 0 then parts[#parts + 1] = "elemental advantage"
+        elseif res < 0 then parts[#parts + 1] = "elemental disadvantage" end
+        local on = 1; pcall(function() on = el["Touch"]("enabled"):GetInt() end)
+        if on == 0 then parts[#parts + 1] = "not available now" end
+        a11y_log("[battle] " .. name .. " resistance " .. tostring(res))
+        return table.concat(parts, ", "), true
+    end
+    -- "Get it now" SPEED UP (get_it_now_breed): the price is a Cost text
+    -- component on the button, kept current by the game (diamondsLeftToSpeedup).
+    if name == "GetItNow" then
+        local cost = nil
+        pcall(function() cost = cleanText(el["Cost"]("text"):GetString()) end)
+        cost = cost and cost:gsub("^%-", "")
+        local text = elementText(el) or "Speed up"
+        if cost and cost ~= "" then return text .. ", " .. cost .. " Diamonds", true end
+    end
+    -- Jukebox tunes (jukebox: Contents/entryN SongName + LockedIcon).
+    if name:find("^entry%d+$") and pn == "Contents" then
+        local song = elementText(findNamed(el, "SongName", 1))
+        if song then
+            local lock = findNamed(el, "LockedIcon", 1)
+            return song .. ((lock and isVisible(lock)) and ", locked" or ""), true
+        end
+    end
+    -- Colossingum quest: team slots (tap one to choose a monster in SELECT
+    -- MONSTER) and opponents. Entries carry LevelFrame/NameFrame texts.
+    if (pn == "TeamView" or pn == "OpponentView") and name:find("^entry%d+$") then
+        local n = tonumber(name:match("%d+")) + 1
+        local who = elementText(findNamed(el, "NameFrame", 1))
+        local lvl = elementText(findNamed(el, "LevelFrame", 1))
+        local desc = who and (who .. (lvl and (", " .. lvl) or "")) or nil
+        if pn == "OpponentView" then return "Opponent " .. n .. ": " .. (desc or "unknown"), true end
+        if desc then return "Team slot " .. n .. ": " .. desc .. ". Enter to change", true end
+        return "Team slot " .. n .. ": empty. Enter to choose a monster", true
+    end
+    -- Wishing Torch bar: two LIGHT buttons (a day / for good), the friends
+    -- highlight toggle and BUY MORE, told apart by their FunctionName.
+    if name:find("^barItem%d+$") and FRIENDLY.__torchLabel then
+        local t = FRIENDLY.__torchLabel(el) or FRIENDLY.__upgradeLabel(el) or FRIENDLY.__speedUpLabel(el)
+        if t then return t, true end
+    end
     -- Promo tray (PromoCenterItem_<id>): a picture plus a countdown. Name the
     -- offer from its promo data (PromoCenter.lua's DebugPrintAllPromoInfo fields).
     if name == "Button" and pn and pn:find("^PromoCenterItem_") then
@@ -748,8 +810,13 @@ local function socialLabel(el, name)
             if breedSelected(el) then
                 parts[#parts + 1] = "selected"
             else
-                local other = breedPick(findNamed(parentOf(side), BREED_OTHER[sideName], 1))
-                if other then parts[#parts + 1] = "breed with " .. other end
+                local otherSide = findNamed(parentOf(side), BREED_OTHER[sideName], 1)
+                local other = breedPick(otherSide)
+                if other then
+                    parts[#parts + 1] = "breed with " .. other
+                    local hint = FRIENDLY.__pairHint(tid, FRIENDLY.__pickTid(otherSide))
+                    if hint then parts[#parts + 1] = hint end
+                end
             end
             return table.concat(parts, ", "), true
         end
@@ -1065,7 +1132,23 @@ local function collectControls(root, out, depth, group)
                                   label = "Puzzle, " .. short .. ", Enter for details" }
             end
             child = nil
-        elseif cname == "InfoLikes" and FRIENDLY.__likes and isVisible(child) then
+        elseif cname == "StatsList" and FRIENDLY.__infoIsMonster() and FRIENDLY.__infoTab(root) == "stats" then
+            -- Stats tab: each row's label (Stat) and value (Value), as the
+            -- game words them (template_stat_*.xml).
+            for _, row in ipairs(FRIENDLY.__statRows(child)) do
+                local text = row
+                out[#out + 1] = { el = { virtual = function() say(text, true) end }, label = text }
+            end
+            child = nil
+        elseif cname == "InfoContent" and FRIENDLY.__infoIsMonster() and FRIENDLY.__infoTab(root) == "bio" then
+            local bio = elementText(child)
+            if bio then
+                out[#out + 1] = { el = { virtual = function() say(bio, true) end }, label = "Bio: " .. bio }
+            end
+            child = nil
+        elseif cname == "InfoLikes" and FRIENDLY.__likes and isVisible(child)
+            and FRIENDLY.__infoIsMonster() and FRIENDLY.__infoTab(root) ~= "stats"
+            and FRIENDLY.__infoTab(root) ~= "bio" then
             -- Likes tab: pictures only; name them from game.getLikes.
             local text = nil
             pcall(function()
@@ -1144,6 +1227,13 @@ end
 -- Navigable controls under a root: returns parallel {objects}, {labels}.
 local function scanClickables(root)
     local out = {}
+    -- A picker shown inside a screen (Colossingum SELECT MONSTER, set by
+    -- BattleMonsterSelectUI "IsShowing"): list only the picker, not the
+    -- screen behind it.
+    pcall(function()
+        local smp = findNamed(root, "SelectMonstersPopup", 4)
+        if smp and smp("IsShowing"):GetInt() == 1 then root = smp end
+    end)
     if root then collectControls(root, out, 0) end
     local items, labels, groups = {}, {}, {}
     for i, rec in ipairs(out) do items[i] = rec.el; labels[i] = rec.label; groups[i] = rec.group or false end
@@ -1236,6 +1326,85 @@ local popupStack = {}
 -- game.getPopUp() returns the top popup's NAME (a string). "MenuReduxElement_Root"
 -- is the island base -- i.e. no real popup. This is the check the game's own
 -- scripts use (ContextBar.lua). hasPopUp() proved unreliable here.
+-- Quiet period while the game switches places (island <-> Market).
+-- The game frees the island's bar state but its own bar script still reads
+-- it (manager:getContext) for a few frames: a use-after-free that only
+-- crashes when that memory has been reused, which the mod's per-frame work
+-- and key handling make likely. So for 4 seconds after a switch starts the
+-- mod does nothing at all: screen ticks return at once and every key only
+-- says "Still loading". Started only by events (a switching button, a
+-- Places entry, Escape in the Market, a Market screen or the island HUD
+-- FIRST appearing), never by a screen that keeps ticking, so it always ends.
+FRIENDLY.__lockUntil = -100
+FRIENDLY.__storeSeenAt = -100
+FRIENDLY.__seen = {}
+function FRIENDLY.__lockKeys(why)
+    local now = 0; pcall(function() now = os.clock() end)
+    if now >= FRIENDLY.__lockUntil then a11y_log("[quiet] 4 seconds: " .. tostring(why)) end
+    FRIENDLY.__lockUntil = now + 4
+end
+function FRIENDLY.__quietNow(now)
+    return now < FRIENDLY.__lockUntil
+end
+function FRIENDLY.__keysLocked()
+    local now = 0; pcall(function() now = os.clock() end)
+    if now < FRIENDLY.__lockUntil then
+        -- Said once per quiet period; further presses stay silent.
+        if FRIENDLY.__loadingSaidFor ~= FRIENDLY.__lockUntil then
+            FRIENDLY.__loadingSaidFor = FRIENDLY.__lockUntil
+            say("Loading", true)
+        end
+        return true
+    end
+    return false
+end
+-- The game's own bar script (ContextBar.lua onTick) calls manager:getContext()
+-- 17 times a frame. While the game switches to the Market that reads the
+-- island's freed bar state (crash at exe+0x214a00 when the memory has been
+-- reused). Wrap the bar's onTick so it skips while the Market is up or a
+-- switch is under way; the bar isn't shown there. Decided from which screens
+-- tick (pure Lua), never by asking the game. Applied once per bar instance.
+FRIENDLY.__barWrapped = {}
+FRIENDLY.__barSkips = 0
+function FRIENDLY.__inMarketOrSwitching(now)
+    return now - FRIENDLY.__storeSeenAt < 0.5 or now < FRIENDLY.__lockUntil
+end
+function FRIENDLY.__wrapBar(root)
+    local bar = findNamed(root, "ContextBar", 2)
+    if not bar then return end
+    local id = tostring(bar)
+    if FRIENDLY.__barWrapped[id] then return end
+    FRIENDLY.__barWrapped[id] = true
+    local orig = nil
+    pcall(function() orig = bar.onTick end)
+    if type(orig) ~= "function" then
+        a11y_log("[barguard] ContextBar onTick not reachable (" .. type(orig) .. ")")
+        return
+    end
+    local ok, err = pcall(function()
+        bar.onTick = function(...)
+            local now = 0; pcall(function() now = os.clock() end)
+            if FRIENDLY.__inMarketOrSwitching(now) then
+                FRIENDLY.__barSkips = FRIENDLY.__barSkips + 1
+                if FRIENDLY.__barSkips == 1 or FRIENDLY.__barSkips % 600 == 0 then
+                    a11y_log("[barguard] skipped the bar's tick " .. FRIENDLY.__barSkips .. " times")
+                end
+                return
+            end
+            return orig(...)
+        end
+    end)
+    local now2 = nil; pcall(function() now2 = bar.onTick end)
+    a11y_log("[barguard] wrap " .. (ok and "set" or ("failed: " .. tostring(err))) .. ", reads back as "
+        .. ((now2 == orig) and "the original" or type(now2)))
+end
+-- Every key handler goes through this.
+function FRIENDLY.__keyGuard(fn)
+    return function(...)
+        if FRIENDLY.__keysLocked() then return end
+        return fn(...)
+    end
+end
 local function currentPopupName()
     local n = ""
     pcall(function() n = tostring(game.getPopUp()) end)
@@ -1383,12 +1552,29 @@ local walletHook = nil     -- set to watchWallet further down
 
 local function menuTick(root, file)
     local now = clock()
+    do
+        local last = FRIENDLY.__seen[file]
+        FRIENDLY.__seen[file] = now
+        local appeared = not last or now - last > MENU_FRESH_SECONDS
+        local market = file:find("^store") or file:find("^admin_store")
+        if market then
+            if appeared then FRIENDLY.__lockKeys("Market opening (" .. file .. ")") end
+            FRIENDLY.__storeSeenAt = now
+        elseif file == "hud" and appeared and now - FRIENDLY.__storeSeenAt < 10 then
+            FRIENDLY.__lockKeys("back from the Market")
+        end
+        if file == "contextbar" then pcall(FRIENDLY.__wrapBar, root) end
+        if FRIENDLY.__quietNow(now) then return end
+    end
     runPending(now, root)
     if file == "contextbar" and contextbarHook then pcall(contextbarHook) end
     if file == "hud" and readyHook then pcall(readyHook, now) end
     if file == "popup_name_entry" and menuState.nameEcho then pcall(menuState.nameEcho, root) end
     if file == "minigame_spinprize" and FRIENDLY.__spinTick then pcall(FRIENDLY.__spinTick, root) end
     if file == "login_base" and FRIENDLY.__loadingTick then pcall(FRIENDLY.__loadingTick, root) end
+    if file == "newsflash" and FRIENDLY.__newsTick then pcall(FRIENDLY.__newsTick, root, now) end
+    if file == "battle_base" and FRIENDLY.__battleTick then pcall(FRIENDLY.__battleTick, root, now) end
+    if file == "battle_campaign_results" and FRIENDLY.__resultsTick then pcall(FRIENDLY.__resultsTick, root, now) end
     if walletHook then pcall(walletHook, now) end
     if menuState.levelWatch then pcall(menuState.levelWatch, now) end
     local m = menus[file]
@@ -1502,7 +1688,9 @@ local function topOverlay()
         -- showgrid_popup (the Show Grid toggle) can linger after placing or
         -- cancelling; it only belongs to placement, never a screen of its own.
         if not PERSISTENT_MENUS[file] and not file:find("^popup_tutorial") and not menuState.sidePanels[file]
-            and (m.appeared or 0) >= since
+            -- (A second of slack: after a quiet period the bar and this screen
+            -- are both re-recorded, in either order.)
+            and (m.appeared or 0) >= since - 1
             and m.content ~= 0
             and menuState.usable(m) and (not best or (m.appeared or 0) > (best.appeared or 0)) then
             best, bestFile = m, file
@@ -1808,6 +1996,105 @@ POPUP_READERS.daily_cumulative_login = function(popup)
     return joinSentences({ "Colossal Conundrum", FRIENDLY.__conundrum(popup) })
 end
 
+-- object_info is shared by monsters and buildings; buildings hide the
+-- Bio/Likes/Stats tabs and have no Likes.
+function FRIENDLY.__infoIsMonster()
+    local m = false
+    pcall(function() m = game.selectedObjIsMonster() and true or false end)
+    return m
+end
+-- Which tab of a monster's INFO page is open: its own tab button is the one
+-- that can't be pressed (BioButton / LikesButton / StatsButton).
+function FRIENDLY.__infoTab(root)
+    for _, t in ipairs({ { "BioButton", "bio" }, { "LikesButton", "likes" }, { "StatsButton", "stats" } }) do
+        local b = findNamed(root, t[1], 1)
+        if b and not isClickable(b) then return t[2] end
+    end
+    return nil
+end
+-- The Stats tab's rows as "Label: value" (template_stat_*.xml: a Stat text
+-- component, and a Value text component or a Value child element).
+function FRIENDLY.__statRows(list)
+    local rows = {}
+    local kids = nil; pcall(function() kids = list:elements() end)
+    local n = 0; pcall(function() n = kids:size() end)
+    for i = 0, n - 1 do
+        local row = nil; pcall(function() row = kids[i] end)
+        if row and isVisible(row) then
+            local label, value = nil, nil
+            pcall(function()
+                if row["Stat"]("visible"):GetInt() ~= 0 then label = cleanText(row["Stat"]("text"):GetString()) end
+            end)
+            pcall(function()
+                if row["Value"]("visible"):GetInt() ~= 0 then value = cleanText(row["Value"]("text"):GetString()) end
+            end)
+            if not value then value = elementText(findNamed(row, "Value", 1)) end
+            if label and value then
+                label = label:gsub("[:%s]+$", "")
+                rows[#rows + 1] = label .. ": " .. value
+            elseif label or value then
+                rows[#rows + 1] = label or value
+            end
+        end
+    end
+    return rows
+end
+-- A building's INFO page: name, description, time left (torches: lit status).
+POPUP_READERS.object_info = function(popup)
+    if FRIENDLY.__infoIsMonster() then return nil end
+    local parts = {}
+    local title = shownText(popup, "ImageTitle")
+    if title then parts[#parts + 1] = title end
+    local torch = FRIENDLY.__torchStatus and FRIENDLY.__torchStatus()
+    if torch then parts[#parts + 1] = torch end
+    local left = shownText(popup, "TimeRemainingText")
+    if left and not torch then parts[#parts + 1] = left end
+    local desc = shownText(popup, "InfoContent")
+    if desc then parts[#parts + 1] = desc end
+    if #parts == 0 then return nil end
+    return joinSentences(parts)
+end
+
+-- TRAIN confirmation (battle_training_popup.xml): the numbers are text
+-- components on the elements (TextA -> TextB, AbilityNameLabel, TimeLabel, CostLabel).
+POPUP_READERS.battle_training_popup = function(popup)
+    local function ctext(elName, c)
+        local t = nil
+        pcall(function()
+            local e = findNamed(popup, elName, 2)
+            if e[c]("visible"):GetInt() ~= 0 then t = cleanText(e[c]("text"):GetString()) end
+        end)
+        return (t and t ~= "") and t or nil
+    end
+    local parts = { "Training" }
+    local desc = shownText(popup, "DESCRIPTION")
+    if desc then parts[#parts + 1] = desc end
+    local a, b = ctext("POWER_INCREASE", "TextA"), ctext("POWER_INCREASE", "TextB")
+    if a and b then parts[#parts + 1] = "Power " .. a .. " to " .. b end
+    a, b = ctext("STAMINA_INCREASE", "TextA"), ctext("STAMINA_INCREASE", "TextB")
+    if a and b then parts[#parts + 1] = "Stamina " .. a .. " to " .. b end
+    local move = ctext("ABILITY_UNLOCK", "AbilityNameLabel")
+    if move then parts[#parts + 1] = "New move: " .. move end
+    local time = ctext("TRAINING_TIME", "TimeLabel")
+    if time then parts[#parts + 1] = "Training will take " .. time end
+    local cost = ctext("TRAINING_COST", "CostLabel")
+    if cost then parts[#parts + 1] = "Costs " .. cost .. " Coins" end
+    return joinSentences(parts)
+end
+
+-- OCCUPANTS (hotel_list, e.g. the Colossingum's Mess Hall): who is staying
+-- and how many beds are used (template_hotelbedsavailable: hotelBedsUsed/max).
+POPUP_READERS.hotel_list = function(popup)
+    local parts = { shownText(popup, "HotelTitle") or "Occupants" }
+    local used, max = nil, nil
+    pcall(function() used = tonumber(game.hotelBedsUsed()); max = tonumber(game.maxHotelBeds()) end)
+    if used and max then parts[#parts + 1] = used .. " of " .. max .. " beds occupied" end
+    local n = 0
+    pcall(function() n = game.getMonstersInHotel():size() end)
+    if n == 0 then parts[#parts + 1] = "No monsters are staying here" end
+    return joinSentences(parts)
+end
+
 -- What a monster likes (object_info.xml InfoLikes: game.getLikes(typeId) is
 -- a list of entity ids; the game shows the last one as a mystery "?").
 function FRIENDLY.__entityName(eid)
@@ -2014,6 +2301,270 @@ function FRIENDLY.__elementsOf(tid)
     for _, ch in ipairs(letters) do els[#els + 1] = FRIENDLY.__elementLetters[ch] end
     if #els == 1 then return els[1], 1 end
     return table.concat(els, ", ", 1, #els - 1) .. " and " .. els[#els], #els
+end
+
+-- A breeding row's monster type (BreedingMonsterListEntry keeps .monster).
+function FRIENDLY.__entryTid(entry)
+    local tid = nil
+    pcall(function()
+        local m = entry.monster
+        if type(m) == "userdata" then tid = m:monsterTypeId()
+        elseif type(m) == "table" then tid = m.monsterTypeId or m.monsterId or m.MonsterId end
+        if type(tid) == "function" then tid = tid(entry.monster) end
+    end)
+    return tonumber(tid)
+end
+-- The picked monster's type in one breeding side (LeftMonsterSelect/RightMonsterSelect).
+function FRIENDLY.__pickTid(side)
+    local list = side and findNamed(side, "List", 1)
+    local kids = nil; pcall(function() kids = list:elements() end)
+    local n = 0; pcall(function() n = kids:size() end)
+    for i = 0, n - 1 do
+        local c = nil; pcall(function() c = kids[i] end)
+        local picked = false
+        pcall(function() picked = tostring(findNamed(c, "Bg", 1):C("Sprite")("spriteName"):GetString()):find("yellow") ~= nil end)
+        if c and isVisible(c) and picked then return FRIENDLY.__entryTid(c) end
+    end
+    return nil
+end
+-- Sorted Natural element letters of a type ("cd"), or nil.
+function FRIENDLY.__geneKey(tid)
+    local genes = nil
+    pcall(function() genes = tostring(game.monsterTypeGenes(tid)) end)
+    local base = genes and genes:lower():gsub("[^%a]", "")
+    if not base or not base:find("^[a-e]+$") then return nil end
+    local letters = {}
+    for ch in base:gmatch(".") do letters[#letters + 1] = ch end
+    table.sort(letters)
+    return table.concat(letters)
+end
+-- The common monster with exactly these Natural elements ("cd" -> Fwog).
+function FRIENDLY.__nameByGenes(key)
+    local map = FRIENDLY.__geneNames
+    if not map then
+        map = {}
+        local misses, count = 0, 0
+        for id = 1, 3000 do
+            local n = nil
+            pcall(function() n = cleanText(LOC(game.getMonsterData(id):name())) end)
+            if n and n ~= "" then
+                misses = 0
+                local special = false
+                pcall(function() special = game.isRare(id) or game.isEpic(id) or game.isSeasonal(id) end)
+                local k = not special and FRIENDLY.__geneKey(id)
+                if k and map[k] == nil then map[k] = n; count = count + 1
+                elseif k and map[k] ~= n then a11y_log("[genes] " .. k .. " also " .. n .. " (kept " .. tostring(map[k]) .. ")") end
+            else
+                misses = misses + 1
+                if misses > 300 then break end
+            end
+        end
+        a11y_log("[genes] " .. count .. " element sets named")
+        FRIENDLY.__geneNames = map
+    end
+    return map[key]
+end
+-- What two Natural monsters can make, by the game's own Breeding Guide rules:
+-- different elements combine; a repeated element gives one of the parents.
+function FRIENDLY.__pairHint(t1, t2)
+    local k1, k2 = t1 and FRIENDLY.__geneKey(t1), t2 and FRIENDLY.__geneKey(t2)
+    if not k1 or not k2 then return nil end
+    local shared, all = {}, {}
+    for ch in k1:gmatch(".") do all[ch] = true end
+    for ch in k2:gmatch(".") do
+        if all[ch] then shared[#shared + 1] = FRIENDLY.__elementLetters[ch] end
+        all[ch] = true
+    end
+    if #shared > 0 then
+        return "both " .. table.concat(shared, " and ") .. ", usually gives one of the parents"
+    end
+    local letters = {}
+    for ch in pairs(all) do letters[#letters + 1] = ch end
+    table.sort(letters)
+    local key = table.concat(letters)
+    local els = {}
+    for _, ch in ipairs(letters) do els[#els + 1] = FRIENDLY.__elementLetters[ch] end
+    local list = table.concat(els, ", ", 1, #els - 1) .. " and " .. els[#els]
+    local name = FRIENDLY.__nameByGenes(key)
+    return "can make " .. (name and (name .. ", " .. list) or list)
+end
+-- Wishing Torch context bar buttons (ContextBar.lua light_torch etc.; costs
+-- from template_torch_*cost.xml: Diamonds for lighting, torchCurrency to buy).
+function FRIENDLY.__torchLabel(el)
+    local fn = nil; pcall(function() fn = el("FunctionName"):GetString() end)
+    local text = elementText(el) or ""
+    local cost = nil
+    pcall(function() cost = elementText(findNamed(el, "attachedTemplate", 2)) end)
+    cost = cost and cost:gsub("^%-", "")
+    if fn == "light_torch" then
+        return "Light for a day" .. (cost and (", " .. cost .. " Diamonds") or "")
+    elseif fn == "permalight_torch" then
+        return "Light permanently" .. (cost and (", " .. cost .. " Diamonds") or "")
+    elseif fn == "buy_another_torch" then
+        local cur = nil
+        pcall(function() cur = currencyCounterName("currency_counter_" .. tostring(game.torchCurrency())) end)
+        a11y_log("[torch] torchCurrency " .. tostring(cur))
+        if not cur or cur == "Currency" then cur = "Coins" end
+        return "Buy another torch" .. (cost and (", " .. cost .. " " .. cur) or "")
+    elseif text:upper() == "UNHIGHLIGHTED" then
+        return "Highlight for friends: off. Press to show friends this torch needs lighting"
+    elseif text:upper() == "HIGHLIGHTED" then
+        return "Highlight for friends: on. Press to turn it off"
+    end
+    return nil
+end
+-- Colossingum battles (battle_base): health from the battle system (as
+-- template_battle_healthbar.xml does: getActiveBattlePlayer(0 = you, 1 =
+-- opponent)), the Status line (the move being played) and whose turn it is.
+FRIENDLY.__battle = { at = 0 }
+function FRIENDLY.__battleHealth()
+    local out = {}
+    for team = 0, 1 do
+        pcall(function()
+            local p = game.battleSystem():getActiveBattlePlayer(team)
+            out[#out + 1] = cleanText(p:name()) .. " " .. p:health() .. " of " .. p:totalHealth() .. " health"
+        end)
+    end
+    if #out == 0 then return nil end
+    return table.concat(out, ", ")
+end
+function FRIENDLY.__battleTick(root, now)
+    local B = FRIENDLY.__battle
+    if now - B.at > 2 then B.status, B.hp, B.turn, B.hpAt = nil, nil, nil, nil end
+    B.at = now
+    local st = shownText(root, "Status")
+    if st and st ~= B.status then say(st, false) end
+    B.status = st
+    -- Health: speak once it has settled (the bars tween for about a second).
+    local hp = FRIENDLY.__battleHealth()
+    if hp ~= B.hpSeen then B.hpSeen = hp; B.hpAt = now end
+    if hp and hp ~= B.hp and B.hpAt and now - B.hpAt > 0.8 then
+        if B.hp then say(hp, false) end
+        B.hp = hp
+    end
+    -- Your turn: a move button becomes usable.
+    local turn = false
+    pcall(function()
+        local bar = findNamed(root, "ActionBar", 2)
+        for i = 0, 3 do
+            local b = bar["ActionButton" .. i]
+            if b and b["Touch"]("enabled"):GetInt() == 1 and b("locked"):GetInt() ~= 1 then turn = true end
+        end
+    end)
+    if turn and B.turn == false then say("Your turn", false) end
+    B.turn = turn
+end
+-- Battle results (battle_campaign_results, BattleCampaignResultsUI.lua):
+-- Victory or Defeat, and the rewards (rewardEntryN: Amount, CurrencyType).
+FRIENDLY.__battleRewardNames = { battle_xp = "Battle XP", xp = "XP", medals = "Medals", coins = "Coins",
+    diamond = "Diamonds", diamonds = "Diamonds", costume = "Costume", trophy = "Trophies", trophies = "Trophies" }
+function FRIENDLY.__resultsTick(root, now)
+    local B = FRIENDLY.__battle
+    if now - (B.resAt or 0) > 2 then B.resSaid = false end
+    B.resAt = now
+    if B.resSaid then return end
+    local bg = findNamed(root, "Bg", 2)
+    local win = findNamed(bg, "Victory", 1)
+    local lose = findNamed(bg, "Defeat", 1)
+    local parts = {}
+    local items = {}
+    if win and isVisible(win) then
+        parts[1] = "Victory!"
+        local kids = nil; pcall(function() kids = win:elements() end)
+        local n = 0; pcall(function() n = kids:size() end)
+        for i = 0, n - 1 do
+            local c = nil; pcall(function() c = kids[i] end)
+            local cn = c and elementName(c)
+            if cn and cn:find("^rewardEntry") then
+                local amt = elementText(findNamed(c, "Value", 1))
+                local kind = ""; pcall(function() kind = c("CurrencyType"):GetString() end)
+                if kind == "" then pcall(function() kind = c("Icon"):GetString() end) end
+                a11y_log("[battle] reward " .. tostring(amt) .. " " .. tostring(kind))
+                if amt then items[#items + 1] = amt .. " " .. (FRIENDLY.__battleRewardNames[kind:lower()] or kind) end
+            end
+        end
+    elseif lose and isVisible(lose) then
+        parts[1] = "Defeat."
+    else
+        return
+    end
+    if #items > 0 then parts[#parts + 1] = "You got " .. table.concat(items, ", ") .. "." end
+    parts[#parts + 1] = "Tab to Continue."
+    B.resSaid = true
+    later(0.5, function() say(table.concat(parts, " "), true) end)
+end
+-- UPGRADE on a selected building's bar: the price the bar shows as a coloured
+-- number (template_upgradecost.xml: game.structureUpgradeCost/Currency/Sale).
+FRIENDLY.__upgradeCurrency = { coins = "Coins", coin = "Coins", diamond = "Diamonds", diamonds = "Diamonds",
+    food = "Food", keys = "Keys", key = "Keys", relics = "Relics", relic = "Relics", shards = "Shards",
+    eth_currency = "Shards", starpower = "Starpower", medals = "Medals" }
+function FRIENDLY.__upgradeLabel(el)
+    local text = elementText(el) or ""
+    if text:upper() ~= "UPGRADE" then return nil end
+    local cost, cur, sale, orig = nil, nil, false, nil
+    pcall(function() cost = tonumber(game.structureUpgradeCost()) end)
+    pcall(function() cur = game.structureUpgradeCurrency() end)
+    pcall(function() sale = game.structureUpgradeSale() and true or false end)
+    if sale then pcall(function() orig = tonumber(game.structureUpgradeOrigCost()) end) end
+    if not cost then return nil end
+    if not FRIENDLY.__upgradeLogged then
+        FRIENDLY.__upgradeLogged = true
+        a11y_log("[upgrade] cost " .. tostring(cost) .. " currency " .. tostring(cur) .. " sale " .. tostring(sale))
+    end
+    local name = nil
+    if type(cur) == "number" then
+        pcall(function() name = currencyCounterName("currency_counter_" .. tostring(cur)) end)
+    elseif cur ~= nil then
+        local k = tostring(cur):lower():gsub("^currency_", "")
+        name = FRIENDLY.__upgradeCurrency[k]
+    end
+    if not name or name == "Currency" then name = "Coins" end
+    local function num(n)
+        local str = tostring(math.floor(n))
+        local out = str:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+        return (out:gsub("^,", ""))
+    end
+    local label = "Upgrade, " .. num(cost) .. " " .. name
+    if sale and orig and orig > cost then label = label .. ", on sale, was " .. num(orig) end
+    return label
+end
+-- SPEED UP on a selected building's or monster's bar: the Diamonds it costs
+-- (ContextBar.lua: SelectedObject():diamondsRequiredToCompleteAction()).
+function FRIENDLY.__speedUpLabel(el)
+    local text = elementText(el) or ""
+    if text:upper() ~= "SPEED UP" then return nil end
+    local d = nil
+    pcall(function() d = tonumber(game.SelectedObject():diamondsRequiredToCompleteAction()) end)
+    if not d or d <= 0 then pcall(function() d = tonumber(game.diamondsLeftToSpeedup()) end) end
+    if not d or d <= 0 then return nil end
+    return "Speed up, " .. math.floor(d) .. " Diamonds"
+end
+-- The in-game Breeding Guide (newsflash "BREEDING GUIDE"): its pages are
+-- pictures with no text, so their words are written out here.
+FRIENDLY.__guidePages = {
+    "Eureka! You've unlocked the Breeding Structure! This handy guide will teach you how to start breeding Monster hybrids! Select Next to learn more.",
+    "The Basics. Combine two Level 4 Monsters of different Elements to create a new type of Monster! A Monster's Elements appear in the Breeding Menu and on its Market frame. The picture: a Noggin, Earth, plus a Toe Jammer, Water, makes a Fwog, Earth and Water.",
+    "The Basics. Combining Monsters of two or more Elements can result in new Monsters or ones just like the parents. The picture: a Noggin, Earth, plus a Maw, Water and Cold, makes a T-Rox, Earth, Water and Cold, or a Noggin, or a Maw.",
+    "The Basics. If an Element is repeated in a Breeding combination, the resulting Monster will be one of the parents. The picture: a Mammott, Cold, plus a Drumpler, Earth and Cold, is crossed out, because both have Cold. A Mammott, Cold, plus a Fwog, Earth and Water, gets a check mark.",
+    "Advanced. Some Special Monsters like Ethereals, Seasonals, Mythicals and Epics have secret, unique breeding combinations that do not follow the Elemental rules. Try different combinations and you might get lucky! The picture shows four mystery monsters around a heart with a question mark.",
+    "Advanced. You can improve your breeding chances for Special Monsters by breeding higher Level Monsters together. You can also improve your chances by lighting Wishing Torches, unlocked at Level 12. The picture shows a level 10 T-Rox and a lit Wishing Torch.",
+}
+FRIENDLY.__guide = { page = nil, at = 0 }
+function FRIENDLY.__newsTick(root, now)
+    local G = FRIENDLY.__guide
+    if now - G.at > 1.5 then G.page = nil end
+    G.at = now
+    local title = shownText(root, "TitleFrame")
+    if not title or title:upper() ~= "BREEDING GUIDE" then G.page = nil return end
+    local page, total = (shownText(root, "PageCounter") or ""):match("(%d+)%s*/%s*(%d+)")
+    page = tonumber(page)
+    if not page or page == G.page then return end
+    local first = G.page == nil
+    G.page = page
+    local text = FRIENDLY.__guidePages[page] or "No words for this page yet"
+    later(first and 0.6 or 0.2, function()
+        say("Breeding guide, page " .. page .. " of " .. total .. ". " .. text, not first)
+    end)
 end
 function FRIENDLY.__appearance()
     local isMonster = false
@@ -2759,7 +3310,8 @@ local function activateObject(entity, label, select, wantKey)
                 end)
                 return
             end
-            say((selectedName() or label) .. " selected. Tab for actions.", true)
+            local torch = FRIENDLY.__torchStatus and FRIENDLY.__torchStatus()
+            say((selectedName() or label) .. " selected" .. (torch and (", " .. torch) or "") .. ". Tab for actions.", true)
             return
         end
         a11y_log("[tap] direct select of " .. label .. " didn't take (" .. tostring(got) .. "), tapping")
@@ -2771,7 +3323,8 @@ local function activateObject(entity, label, select, wantKey)
                     -- its own announcement says what happened; don't talk over it.
                     a11y_log("[tap] " .. label .. " opened a screen")
                 elseif selectionIs(wantKey, label) then
-                    say((selectedName() or label) .. " selected. Tab for actions.", true)
+                    local torch = FRIENDLY.__torchStatus and FRIENDLY.__torchStatus()
+                    say((selectedName() or label) .. " selected" .. (torch and (", " .. torch) or "") .. ". Tab for actions.", true)
                 elseif hit then
                     -- The click selected nothing; that's normal when the tap
                     -- does its own thing (hatch, collect), but say so honestly.
@@ -2802,6 +3355,23 @@ local function durationText(secs)
     if h > 0 then return m > 0 and (unit(h, "hour") .. " " .. unit(m, "minute")) or unit(h, "hour") end
     if m > 0 then return m >= 10 and unit(m, "minute") or (s > 0 and (unit(m, "minute") .. " " .. unit(s, "second")) or unit(m, "minute")) end
     return unit(s, "second")
+end
+
+-- The selected Wishing Torch: lit or not, and burn time left.
+-- SharedObjectInfo.lua shows game.torchTime() (seconds) when it is > 0; the
+-- bar's context says TORCH_UNLIT / TORCH_DAILY_LIT (ContextBar.lua).
+function FRIENDLY.__torchStatus()
+    local isTorch = false
+    pcall(function() isTorch = game.selectedObjType() == game.SpecificEntityType_TORCH end)
+    if not isTorch then return nil end
+    local t, ctx = nil, nil
+    pcall(function() t = tonumber(game.torchTime()) end)
+    pcall(function() ctx = tostring(manager:getContext()) end)
+    a11y_log("[torch] torchTime " .. tostring(t) .. " context " .. tostring(ctx))
+    if ctx and ctx:find("PERMA") then return "lit permanently" end
+    if t and t > 0 then return "lit, " .. durationText(t) .. " left" end
+    if ctx == "TORCH_UNLIT" then return "not lit" end
+    return nil
 end
 
 local function islandReady(check)
@@ -2836,13 +3406,43 @@ local function structureStatus(id)
         if islandReady("hasBreedingReady") then return "breeding finished, egg ready" end
         return "empty"
     elseif entityIs(ent, "isNursery") then
-        if busy then return "egg hatching, " .. durationText(secs) .. " left" end
+        if busy then
+            -- Rare and Epic eggs shimmer while incubating (a game tip); say
+            -- what sighted players see, without naming the monster.
+            local look = ""
+            pcall(function()
+                local tid = game.FindNursery(0):getMonsterInEgg()
+                if tid and tid > 0 then
+                    if game.isEpic(tid) then
+                        look = ", the egg is wrapped in a dazzling, swirling shimmer: an Epic egg!"
+                    elseif game.isRare(tid) then
+                        look = ", the egg sparkles with a soft shimmer: a Rare egg!"
+                    end
+                end
+            end)
+            return "egg hatching, " .. durationText(secs) .. " left" .. look
+        end
         if islandReady("hasNurseryReady") then return "egg ready to hatch" end
         return nil
     elseif entityIs(ent, "isCastle") then
         if busy then return "upgrading, " .. durationText(secs) .. " left" end
         if islandReady("hasCastleUpgradeReady") then return "upgrade finished" end
         return nil
+    elseif (structureLabel(id) or ""):lower():find("torch") then
+        -- No per-torch state in the API; the island's counts tell it when
+        -- every torch is in the same state (game.numLitTorches etc.).
+        local function count(fn)
+            local v = nil
+            pcall(function() v = tonumber(game[fn]()) end)
+            if v == nil then pcall(function() v = tonumber(game[fn](game.player():getActiveIsland())) end) end
+            return v
+        end
+        local total, lit, perma = count("numTorchesTotal"), count("numLitTorches"), count("numPermaLitTorches")
+        if not total or total < 1 or not lit then return nil end
+        if perma and perma >= total then return "lit permanently" end
+        if lit >= total then return "lit" end
+        if lit == 0 and (perma or 0) == 0 then return "not lit" end
+        return lit .. " of " .. total .. " torches lit"
     elseif entityIs(ent, "isObstacle") then
         if busy then return "being removed, " .. durationText(secs) .. " left" end
         -- Finished removals sit at a small negative time; never-started ones
@@ -2858,6 +3458,22 @@ local function monsterStatus(uid)
     local ent = nil
     pcall(function() ent = game.GetMonster(uid) end)
     local parts = {}
+    -- The Colossingum: no feeding, likes or coins; monsters train instead.
+    local battle = false
+    pcall(function() battle = game.isBattleIsland() and true or false end)
+    if battle then
+        local lvl = nil
+        pcall(function() lvl = ent:level() end)
+        if lvl then parts[#parts + 1] = "level " .. tostring(lvl) end
+        local training = false
+        -- isMonsterTraining needs the island's world context (it crashes
+        -- outright otherwise): only ask while the island HUD is live.
+        if liveMenu("hud") then
+            pcall(function() training = game.isMonsterTraining(uid) and true or false end)
+        end
+        if training then parts[#parts + 1] = "training in the Conservatory" end
+        return #parts > 0 and table.concat(parts, ", ") or nil
+    end
     if ent then
         local lvl, fed, need = nil, nil, 0
         pcall(function() lvl = ent:level() end)
@@ -3786,7 +4402,14 @@ local function navContext()
         local virtual = {}
         local target = tutorialTarget()
         if target then virtual[1] = { "Tutorial: " .. target[1], target[2], first = true, group = "Tutorial" } end
-        for _, o in ipairs(islandObjects()) do virtual[#virtual + 1] = { o[1], o[2], group = OBJECT_GROUPS[o.rank] } end
+        -- Rebuilding every building and monster with its status takes 30-60 ms;
+        -- reuse it for 1.5 seconds so quick Tabbing doesn't lag.
+        local cache = FRIENDLY.__objCache
+        if not cache or clock() - cache.t > 1.5 then
+            cache = { t = clock(), list = islandObjects() }
+            FRIENDLY.__objCache = cache
+        end
+        for _, o in ipairs(cache.list) do virtual[#virtual + 1] = { o[1], o[2], group = OBJECT_GROUPS[o.rank] } end
         return roots, "island", virtual
     end
     -- A real popup is open. Reconcile the stack with the live top name in case a
@@ -3889,6 +4512,7 @@ end
 
 -- edge: Home/End, jump to the first (dir < 0) or last (dir > 0) item.
 local function navMove(dir, edge)
+    if FRIENDLY.__keysLocked() then return end
     if vmenu.active then                        -- Places / Objects list takes precedence
         local n = #vmenu.items
         vmenu.index = edge and (dir > 0 and n or 1) or (vmenu.index + dir)
@@ -4111,7 +4735,12 @@ function nav.breedingStatus()
     local a, b, heart = FRIENDLY.__social.breedPicks(root)
     local h = heart and elementText(heart)
     if a and b then
-        say("Breeding " .. a .. " with " .. b .. ". Now press " .. ((h and h ~= "") and h or "the Breed button")
+        local hint = nil
+        pcall(function()
+            hint = FRIENDLY.__pairHint(FRIENDLY.__pickTid(findNamed(root, "LeftMonsterSelect")),
+                FRIENDLY.__pickTid(findNamed(root, "RightMonsterSelect")))
+        end)
+        say("Breeding " .. a .. " with " .. b .. (hint and (", " .. hint) or "") .. ". Now press " .. ((h and h ~= "") and h or "the Breed button")
             .. ", near the top of the list.", true)
     elseif a or b then
         say((a or b) .. " picked as " .. (a and "monster 1" or "monster 2") .. ". Now choose "
@@ -4178,11 +4807,12 @@ function nav.mapInfo()
 end
 
 local function navActivate()
+    if FRIENDLY.__keysLocked() then return end
     if vmenu.active then                        -- run the chosen list entry
         if vmenu.index < 1 then say("Press Tab to choose", true) return end
         local dest = vmenu.items[vmenu.index]
         vmenu.active = false
-        if vmenu.kind == "places" then say("Opening " .. dest[1], false) end
+        if vmenu.kind == "places" then say("Opening " .. dest[1], false); FRIENDLY.__lockKeys("Places: " .. tostring(dest[1])) end
         pcall(nav.muteGameEnter)                -- before: the action may close screens
         pcall(nav.guardEnter)
         menuState.touch()
@@ -4219,6 +4849,12 @@ local function navActivate()
     if elementName(el) == "EggImage" then
         if pressElement(el) then say("Cracking the egg", true); nav.crackEgg(2) end
         return
+    end
+    do
+        local up = label:upper()
+        for _, w in ipairs({ "MARKET", "MAP", "BATTLE", "COLLECTION", "QUESTS", "VERSUS", "START BATTLE", "EXIT" }) do
+            if up == w or up:find("^" .. w .. ",") then FRIENDLY.__lockKeys(label) end
+        end
     end
     if pressElement(el) then say(label, false) else say("Could not activate " .. label, true) end
     if breedRow then later(0.4, nav.breedingStatus) end
@@ -4347,6 +4983,11 @@ local function doBack()
 end
 
 function goBack(key)
+    if FRIENDLY.__keysLocked() then return end
+    -- Escape in the Market leaves it: lock the keys while the island loads.
+    pcall(function()
+        if os.clock() - FRIENDLY.__storeSeenAt < 0.5 then FRIENDLY.__lockKeys("leaving the Market") end
+    end)
     if key == "backspace" then
         if textEntryOpen() then return end
         -- Backspace is a real Escape for the game: its own Escape handling runs
@@ -4579,6 +5220,7 @@ local function tutHeartbeat(menu, now)
 end
 
 local function tutTick(root, menu)
+    if FRIENDLY.__quietNow(clock()) then return end
     tut.roots[menu] = root
     if TUT_DEBUG then
         pcall(tutProbe, root, menu)
@@ -4603,6 +5245,11 @@ local function tutTick(root, menu)
     tut.spoken = msg
     if msg == "" then return end
     a11y_log("[tut] " .. menu .. ": " .. msg)
+    -- A raw text key (BATT_TUT_01_02b_OTHER_DMG_EXPOSITION): the game has no
+    -- English words for this step, so it shows the key itself.
+    if msg:find("^[%u%d_]+%.?$") and msg:find("_") then
+        msg = "This tutorial step has no text in the game, it only shows a code."
+    end
     say(msg .. tutHint(root, menu), false)
 end
 
@@ -5167,30 +5814,35 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
         local root = liveMenu("login_base")
         local status = root and shownText(root, "ConnectionStatus")
         if status then say(status, true) return end
+        if liveMenu("battle_base") and FRIENDLY.__battleHealth then
+            local hp = FRIENDLY.__battleHealth()
+            if hp then say(hp, true) return end
+        end
         announceHud()
     end
-    jeode.registerGlobal("a11y_announceHud", nav.hudKey)
-    jeode.registerGlobal("a11y_announcePopup", announceCurrentPopup)
+    jeode.registerGlobal("a11y_announceHud", FRIENDLY.__keyGuard(nav.hudKey))
+    jeode.registerGlobal("a11y_announcePopup", FRIENDLY.__keyGuard(announceCurrentPopup))
     jeode.registerGlobal("a11y_navNext", function() navMove(1) end)
     jeode.registerGlobal("a11y_navPrev", function() navMove(-1) end)
     jeode.registerGlobal("a11y_navEdge", function(dir) navMove(dir, true) end)
     jeode.registerGlobal("a11y_navActivate", navActivate)
-    jeode.registerGlobal("a11y_menu", openPlaces)
-    jeode.registerGlobal("a11y_tutorialContinue", tutorialContinue)
-    jeode.registerGlobal("a11y_tutorial_announce", announceTutorialStep)
-    jeode.registerGlobal("a11y_dump", dumpUI)
+    jeode.registerGlobal("a11y_menu", FRIENDLY.__keyGuard(openPlaces))
+    jeode.registerGlobal("a11y_tutorialContinue", FRIENDLY.__keyGuard(tutorialContinue))
+    jeode.registerGlobal("a11y_tutorial_announce", FRIENDLY.__keyGuard(announceTutorialStep))
+    jeode.registerGlobal("a11y_dump", FRIENDLY.__keyGuard(dumpUI))
     jeode.registerGlobal("a11y_tutTick", tutTick)
     jeode.registerGlobal("a11y_tutGone", tutGone)
     jeode.registerGlobal("a11y_onTutorialPopup", onTutorialPopup)
     jeode.registerGlobal("a11y_menuTick", menuTick)
-    jeode.registerGlobal("a11y_objects", openObjects)
-    jeode.registerGlobal("a11y_arrow", arrow)
-    jeode.registerGlobal("a11y_whatnow", whatNow)
-    jeode.registerGlobal("a11y_appearance", function() FRIENDLY.__appearance() end)
-    jeode.registerGlobal("a11y_xp", function() FRIENDLY.__xp() end)
+    jeode.registerGlobal("a11y_objects", FRIENDLY.__keyGuard(openObjects))
+    jeode.registerGlobal("a11y_arrow", FRIENDLY.__keyGuard(arrow))
+    jeode.registerGlobal("a11y_whatnow", FRIENDLY.__keyGuard(whatNow))
+    jeode.registerGlobal("a11y_appearance", FRIENDLY.__keyGuard(function() FRIENDLY.__appearance() end))
+    jeode.registerGlobal("a11y_xp", FRIENDLY.__keyGuard(function() FRIENDLY.__xp() end))
     -- Plain letters A, W, M, O, I, C, T: the same as their Control+Shift
     -- fallbacks, except while a text box is open (typing a name).
     jeode.registerGlobal("a11y_plainKey", function(what)
+        if FRIENDLY.__keysLocked() then return end
         if nav.textEntryOpen and nav.textEntryOpen() then return end
         local run = {
             hud = nav.hudKey,
@@ -5210,6 +5862,7 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
     -- Shift+Tab and Tab (Shift+Tab also opens the Steam overlay). Left alone
     -- while a text box is open, so names can have commas and full stops.
     jeode.registerGlobal("a11y_spot", function(dir)
+        if FRIENDLY.__keysLocked() then return end
         if placing() then spotStep(dir) return end
         if nav.textEntryOpen and nav.textEntryOpen() then return end
         navMove(dir)
@@ -5226,8 +5879,9 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
         placeAt.t = -100
         say("Camera reset to the whole island", true)
     end
-    jeode.registerGlobal("a11y_camera", nav.cameraKey)
+    jeode.registerGlobal("a11y_camera", FRIENDLY.__keyGuard(nav.cameraKey))
     jeode.registerGlobal("a11y_poi", function(dir)
+        if FRIENDLY.__keysLocked() then return end
         if placing() then poiStep(dir) else navGroupJump(dir) end
     end)
     a11y_log("registered a11y_* globals (HUD, popup, nav, menu, dump) via jeode.registerGlobal")
