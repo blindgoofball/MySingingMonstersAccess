@@ -72,7 +72,7 @@ static int game_is_foreground(void)
    frame boundary. Nav handlers are silent when no real popup is open, so plain
    Tab/Enter during normal play are harmless no-ops. */
 enum { HK_HUD = 0, HK_NAV_NEXT, HK_NAV_PREV, HK_ACTIVATE, HK_MENU, HK_TUTORIAL, HK_TUTSTEP, HK_DUMP, HK_OBJECTS, HK_LEFT, HK_RIGHT, HK_UP, HK_DOWN, HK_WHATNOW, HK_ESCAPE, HK_BACKSPACE, HK_POI_PREV, HK_POI_NEXT, HK_SPOT_PREV, HK_SPOT_NEXT, HK_CAMERA, HK_HOME, HK_END, HK_LOOKS,
-       HK_P_HUD, HK_P_WHATNOW, HK_P_MENU, HK_P_OBJECTS, HK_P_LOOKS, HK_P_CAMERA, HK_P_TUTSTEP, HK_LETTERS, HK_XP, HK_P_XP, HK_COUNT };
+       HK_P_HUD, HK_P_WHATNOW, HK_P_MENU, HK_P_OBJECTS, HK_P_LOOKS, HK_P_CAMERA, HK_P_TUTSTEP, HK_LETTERS, HK_XP, HK_P_XP, HK_ADJ_DOWN, HK_ADJ_UP, HK_ADJ_MIN, HK_ADJ_MAX, HK_COUNT };
 
 static const char *const g_hkLua[HK_COUNT] = {
     /* HK_HUD (Ctrl+Shift+A) */
@@ -133,6 +133,12 @@ static const char *const g_hkLua[HK_COUNT] = {
     /* HK_XP (Ctrl+Shift+X) / HK_P_XP (X) -- XP to the next level */
     "if type(a11y_xp)=='function' then a11y_xp() end",
     "if type(a11y_plainKey)=='function' then a11y_plainKey('xp') end",
+    /* HK_ADJ_DOWN / HK_ADJ_UP (Shift+Comma / Shift+Period) -- lower / raise a slider */
+    "if type(a11y_adjust)=='function' then a11y_adjust(-1) end",
+    "if type(a11y_adjust)=='function' then a11y_adjust(1) end",
+    /* HK_ADJ_MIN / HK_ADJ_MAX (Shift+Home / Shift+End) -- slider to 0% / 100% */
+    "if type(a11y_adjust)=='function' then a11y_adjust('min') end",
+    "if type(a11y_adjust)=='function' then a11y_adjust('max') end",
 };
 
 /* ---------------------------------------------------------------------------
@@ -226,6 +232,10 @@ static unsigned __stdcall HotkeyProc(void *param)
         }
         down[HK_LETTERS]   = ctrl && shift && KEY_DOWN('L');
         down[HK_XP]        = ctrl && shift && KEY_DOWN('X');
+        down[HK_ADJ_DOWN]  = shift && !ctrl && KEY_DOWN(VK_OEM_COMMA);
+        down[HK_ADJ_UP]    = shift && !ctrl && KEY_DOWN(VK_OEM_PERIOD);
+        down[HK_ADJ_MIN]   = shift && !ctrl && KEY_DOWN(VK_HOME);
+        down[HK_ADJ_MAX]   = shift && !ctrl && KEY_DOWN(VK_END);
 
         for (i = 0; i < HK_COUNT; i++) {
             /* Keys that only move focus or the placing cursor (no game action):
@@ -236,6 +246,7 @@ static unsigned __stdcall HotkeyProc(void *param)
                 || i == HK_SPOT_PREV || i == HK_SPOT_NEXT || i == HK_POI_PREV || i == HK_POI_NEXT
                 || i == HK_LEFT || i == HK_RIGHT || i == HK_UP || i == HK_DOWN;
             int repeats = i == HK_NAV_NEXT || i == HK_NAV_PREV || i == HK_SPOT_PREV || i == HK_SPOT_NEXT
+                || i == HK_ADJ_DOWN || i == HK_ADJ_UP
                 || i == HK_LEFT || i == HK_RIGHT || i == HK_UP || i == HK_DOWN;
             DWORD debounce = moving ? MOVE_DEBOUNCE_MS : HOTKEY_DEBOUNCE_MS;
             int fire = 0;
@@ -252,6 +263,7 @@ static unsigned __stdcall HotkeyProc(void *param)
                     if (game_is_foreground()) settings_toggle_letters();
                 } else if (game_is_foreground() && g_api && g_api->is_lua_ready()) {
                     if (i == HK_HUD) A11Y_Log("Ctrl+Shift+A -> HUD announce");
+                    if (i == HK_NAV_NEXT || i == HK_NAV_PREV) A11Y_Log("[timing] Tab key seen");
                     g_api->queue_lua(g_hkLua[i], "=a11y_hotkey");
                 }
             }

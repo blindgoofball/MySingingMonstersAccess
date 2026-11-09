@@ -94,12 +94,13 @@ The single-letter keys (A, W, X, M, O, I, C, T) do nothing while a text box is o
 | Arrow keys | While placing an object: move the placing cursor one tile and hear the spot (free or blocked, what is nearby, Likes close by). Nothing moves in the game until you press Enter. |
 | Enter and Escape | While placing an object: Enter places it where the cursor is, Escape cancels. Tab says the spot again. |
 | Comma and Period | Previous and next item, like Shift+Tab and Tab. While placing an object, after a bracket: step through the free spots next to that object. In a text box they type as normal. |
-| A (fallback: Control+Shift+A) | Status: coins, diamonds, food, level and so on. On the loading screen, how far loading has got. |
+| Shift+Comma and Shift+Period | On a slider: lower or raise it (the CUSTOMIXER volumes, the Time Warper, monster volume, decoration size). Shift+Home and Shift+End go to the lowest and highest value, and Enter on a slider resets it. |
+| A (fallback: Control+Shift+A) | Status: coins, diamonds, food, level and so on. On the loading screen, how far loading has got. In the Clubbox, the act, your Hype, tickets and time left. |
 | W (fallback: Control+Shift+W) | What now: things that are ready and your current goals. |
 | X (fallback: Control+Shift+X) | XP: how much you have towards the next level and how much is left. |
 | M (fallback: Control+Shift+M) | Places: Market, Book of Monsters, Map, Goals, Friends, Mail, Options. |
 | O (fallback: Control+Shift+O) | A list of everything on your island. |
-| I (fallback: Control+Shift+I) | With a monster selected: what it looks like, and its elements. Descriptions are written from the game's own pictures and cover the natural monsters so far (Plant Island and the other early islands); more will be added. |
+| I (fallback: Control+Shift+I) | With a monster selected: what it looks like, and its elements. Descriptions are written from the game's own pictures and cover the natural monsters (Plant Island and the other early islands) and the Dipsters so far; more will be added. |
 | C (fallback: Control+Shift+C) | Put the camera back on the whole island (the game's default view). |
 | T (fallback: Control+Shift+T) | Repeat the current tutorial step. |
 | Control+Shift+Enter | Continue the tutorial. |

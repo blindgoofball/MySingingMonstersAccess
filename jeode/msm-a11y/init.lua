@@ -353,6 +353,7 @@ end
 local TITLE_NAMES = { "Title", "TitleText", "TitleLabel", "Header" }
 -- Left / Center / Right: the numbered steps of "How it works" screens.
 local BODY_NAMES = { "Text", "Message", "MessageText", "Body", "Description", "Desc", "Notification", "Notification2",
+                     "NotificationBottom",
                      "Left", "Center", "Right" }
 
 local function popupTitle(popup)
@@ -648,6 +649,20 @@ local function socialLabel(el, name)
     if sprite == "button_hide_hud" then return "Hide menus (view mode)", true end
     local p = parentOf(el)
     local pn = p and elementName(p)
+    -- HUD: the Clubbox and Sticker book buttons are pictures (an inner
+    -- "Button" with a timer / count); name them from their holder.
+    if name == "Button" and pn == "ClubboxButton" then
+        local parts = { "Clubbox" }
+        local left = elementText(findNamed(el, "TimerBar", 1))
+        if left then parts[#parts + 1] = left .. " left" end
+        local tickets = elementText(findNamed(el, "TicketBar", 1))
+        if tickets then parts[#parts + 1] = tickets .. " tickets" end
+        return table.concat(parts, ", "), true
+    end
+    if name == "Button" and pn == "StickerbookButton" then
+        local stars = elementText(findNamed(el, "StarBar", 1))
+        return "Sticker book" .. (stars and (", " .. stars) or ""), true
+    end
     -- Map: the selected island's arrows and GO; the alert buttons at the top.
     if (name == "LeftButton" or name == "RightButton") and pn == "Main" then
         return name == "LeftButton" and "Previous island" or "Next island", true
@@ -749,6 +764,104 @@ local function socialLabel(el, name)
     -- Goal rows (named by goal id): the arrow that shows where to do it. Not
     -- final: the goal's text and rewards are added after.
     if name == "HelpArrow" and pn and pn:find("^%d+$") then return "Show me", false end
+    -- Hype game (HypeGame.lua): its HypeBar is the spin button; Minus /
+    -- Plus step through the ticket amounts.
+    if pn == "hype_game" then
+        local g = p
+        local tickets = nil
+        pcall(function() tickets = g.currentTickets end)
+        -- HypeButton spins; the HypeBar opens Hype Progress.
+        if name == "HypeButton" then
+            return "Spin" .. (tickets and (" with " .. tickets .. (tickets == 1 and " ticket" or " tickets")) or ""), true
+        end
+        if name == "HypeBar" then
+            local pts = elementText(findNamed(el, "RewardBar", 1))
+            local a, b = (pts or ""):match("(%d+)%s*/%s*(%d+)")
+            return "Hype progress" .. (a and (", " .. a .. " of " .. b) or ""), true
+        end
+        if name == "MinusButton" then return "Fewer tickets" .. (tickets and (", now " .. tickets) or ""), true end
+        if name == "PlusButton" then return "More tickets" .. (tickets and (", now " .. tickets) or ""), true end
+    end
+    -- Hype Progress (ClubboxProgress.lua): each stop on the path holds its
+    -- reward's name (TooltipText; the shown tooltip is a "Hello"
+    -- placeholder) and is coloured grey (locked), teal (earned) or yellow
+    -- (the one being worked toward).
+    local stop = name and name:match("^ClubboxProgressNode(%d+)$")
+    if stop then
+        local parts = { "Reward " .. stop }
+        local what = nil
+        pcall(function() what = el.TooltipText end)
+        if type(what) == "string" and what ~= "" then
+            local t = cleanText(LOC(what)) or what
+            t = t:gsub("%s*\n%s*", ", "):gsub("%s+unlocked!?$", "")
+            parts[#parts + 1] = t
+        end
+        local base = ""
+        pcall(function() base = tostring(el:C("Base")("spriteName"):GetString()) end)
+        if base:find("teal") then parts[#parts + 1] = "earned"
+        elseif base:find("yellow") then parts[#parts + 1] = "next"
+        elseif base:find("grey") then parts[#parts + 1] = "locked" end
+        return table.concat(parts, ", "), true
+    end
+    -- Opening a sticker pack (OpenCardPack.lua): the whole screen is the
+    -- "Click to continue" button.
+    if name == "Fade" and pn == "open_card_pack" then
+        local left = elementText(findNamed(p, "CurrencyCounter", 1))
+        return "Continue" .. (left and (", " .. left .. " packs left") or ""), true
+    end
+    -- CUSTOMIXER (template_ClubboxPerfEditor / template_ClubStageEdEntry).
+    if name == "CategoryIcon" and pn and pn:find("^Prop%d+$") then
+        return FRIENDLY.__mixPerformer(p), true
+    end
+    -- Performer volume sliders (template_club_perfSlider: SliderBg under
+    -- VolumeControl under the PropN row).
+    if name == "SliderBg" and pn == "VolumeControl" then
+        local t = FRIENDLY.__mixVolume(el)
+        if t then return t, true end
+    end
+    -- One-slider screens (Time Warper, monster volume, decoration size).
+    if name == "Slider" and FRIENDLY.__sliderKinds then
+        for _, k in ipairs(FRIENDLY.__sliderKinds) do
+            if k.screen == pn then
+                local v = k.get()
+                return k.name .. ", slider, " .. (k.text and k.text(v) or FRIENDLY.__warp.text()), true
+            end
+        end
+    end
+    -- Options page: the Motion FX switch (ToggleScreenFx; ToggleArea is the touch).
+    if name == "ToggleArea" and pn == "ToggleScreenFx" then
+        local on = nil
+        pcall(function() on = p:IsToggled() and true or false end)
+        local what = elementText(p) or "Motion FX"
+        return what:gsub("^Enable ", "") .. (on == nil and "" or (on and ", on" or ", off")), true
+    end
+    if name == "VariantControlButton" and pn and pn:find("^StageEditorBg%d+$") then
+        return FRIENDLY.__mixStage(p, el), true
+    end
+    -- Clubbox unlock fanfare ("DJ Epic has joined the Act"): tap anywhere.
+    if name == "Fade" and pn == "popup_clubbox_unlock_fanfare" then return "Continue", true end
+    -- Clubbox HUD: the Hype bar.
+    if name == "HypeBar" then
+        local pts = elementText(findNamed(el, "RewardBar", 1))
+        local a, b = (pts or ""):match("(%d+)%s*/%s*(%d+)")
+        if a then return "Hype progress, " .. a .. " of " .. b, true end
+        return "Hype progress" .. (pts and (", " .. pts) or ""), true
+    end
+    -- Clubbox act cards (template_clubbox_acts_entry): only a poster; the
+    -- act is its actId (ClubboxActSelect: game.getClubboxActTitle).
+    if name and name:find("^entry%d+$") then
+        local id = nil
+        pcall(function() id = el.actId end)
+        if type(id) == "number" and id > 0 then
+            local t = nil
+            pcall(function() t = cleanText(LOC(game.getClubboxActTitle(id))) end)
+            if t and t ~= "" then
+                local sel = nil
+                pcall(function() sel = el.parent.selectedActId end)
+                return "Act: " .. t .. (sel == id and ", selected" or ""), true
+            end
+        end
+    end
     -- HUD Encore button: the event's points and time left.
     if name == "EncoreBar" then
         local parts = { "Encore event" }
@@ -1264,6 +1377,12 @@ end
 local POPUP_READERS = { newsflash = newsflashText }
 
 local function announcePopup(id, popup)
+    -- Screens can share one root (a notice over the Hype game): read only
+    -- this screen's own element.
+    if id ~= nil and popup then
+        local own = findNamed(popup, tostring(id), 3)
+        if own and isVisible(own) then popup = own end
+    end
     -- Prefer the popup's real title; fall back to the humanized id.
     local title = popupTitle(popup)
     local msg = title or popupDisplayName(id)
@@ -1295,6 +1414,7 @@ local function announcePopup(id, popup)
     end
     lastConfirmation.text = nil
     local reader = POPUP_READERS[tostring(id)]
+        or (tostring(id):find("_event_screen$") and POPUP_READERS.__eventScreen)
     if reader then
         local t = nil
         pcall(function() t = reader(popup) end)
@@ -1455,7 +1575,8 @@ end
 -- ---------------------------------------------------------------------------
 -- Menus that are always on screen (or always ticking) on the island. Anything
 -- else that is live is a screen opened on top of the island.
-local PERSISTENT_MENUS = { hud = true, contextbar = true, tutorial = true, empty = true, load_fade = true }
+local PERSISTENT_MENUS = { hud = true, contextbar = true, tutorial = true, empty = true, load_fade = true, friend_hud = true,
+                           hud_clubbox = true }
 local DIALOG_BUTTONS = { "YesButton", "NoButton", "OkayButton", "OkButton", "BuyButton", "ConfirmButton",
                          "CancelButton", "CloseButton", "PurchaseButton" }
 local MENU_FRESH_SECONDS = 0.5
@@ -1573,6 +1694,12 @@ local function menuTick(root, file)
     if file == "minigame_spinprize" and FRIENDLY.__spinTick then pcall(FRIENDLY.__spinTick, root) end
     if file == "login_base" and FRIENDLY.__loadingTick then pcall(FRIENDLY.__loadingTick, root) end
     if file == "newsflash" and FRIENDLY.__newsTick then pcall(FRIENDLY.__newsTick, root, now) end
+    if file == "hype_game" and FRIENDLY.__hypeTick then pcall(FRIENDLY.__hypeTick, root, now) end
+    if file == "clubbox_customization" and FRIENDLY.__mixTick then pcall(FRIENDLY.__mixTick, root, now) end
+    if file == "empty" and FRIENDLY.__emptyTick then pcall(FRIENDLY.__emptyTick, now) end
+    if (file == "clubbox_act_select" or file == "clubbox_tutorial_popup") and FRIENDLY.__clubTick then
+        pcall(FRIENDLY.__clubTick, root, now)
+    end
     if file == "battle_base" and FRIENDLY.__battleTick then pcall(FRIENDLY.__battleTick, root, now) end
     if file == "battle_campaign_results" and FRIENDLY.__resultsTick then pcall(FRIENDLY.__resultsTick, root, now) end
     if walletHook then pcall(walletHook, now) end
@@ -1672,6 +1799,15 @@ local function menuTick(root, file)
 end
 
 
+-- A Clubbox tutorial step waiting for you to do something on the screen
+-- behind it ("Let's try it by spending 3"): its Continue button is hidden.
+-- It isn't a screen to Tab through then; the one behind it is.
+function menuState.waitingTutorial(file, m)
+    if file ~= "clubbox_tutorial_popup" then return false end
+    local btn = findNamed(m.root, "ContinueButton", 4)
+    return btn ~= nil and not isVisible(btn)
+end
+
 -- The most recently opened screen still on screen, if any. Some screens opened
 -- from C++ (bakery...) don't always show up as the top popup; without this,
 -- Tab would fall back to the island and list the main menu behind them.
@@ -1680,9 +1816,13 @@ local function topOverlay()
     -- Only screens opened after the island loaded: login menus that linger
     -- don't count.
     local since = 0
-    for _, f in ipairs({ "hud", "contextbar" }) do
+    for _, f in ipairs({ "hud", "hud_clubbox", "friend_hud" }) do
         local m = menus[f]
-        if m and m.appeared and m.appeared > since then since = m.appeared end
+        if m and m.appeared and m.appeared > since and menuState.usable(m) then since = m.appeared end
+    end
+    if since == 0 then
+        local m = menus.contextbar
+        if m and m.appeared then since = m.appeared end
     end
     for file, m in pairs(menus) do
         -- showgrid_popup (the Show Grid toggle) can linger after placing or
@@ -1692,7 +1832,8 @@ local function topOverlay()
             -- are both re-recorded, in either order.)
             and (m.appeared or 0) >= since - 1
             and m.content ~= 0
-            and menuState.usable(m) and (not best or (m.appeared or 0) > (best.appeared or 0)) then
+            and menuState.usable(m) and (not best or (m.appeared or 0) > (best.appeared or 0))
+            and not menuState.waitingTutorial(file, m) then
             best, bestFile = m, file
         end
     end
@@ -1711,6 +1852,52 @@ local function liveMenu(name)
         if mm.rootName == name and menuState.usable(mm) then return mm.root end
     end
     return nil
+end
+
+-- A popup the game put inside the "empty" screen (C++ offers like "top up
+-- your Clubbox Tickets"): getPopUp() doesn't name it, getTopPopUpName() does.
+function FRIENDLY.__emptyPopup()
+    local t2 = ""; pcall(function() t2 = tostring(game.getTopPopUpName()) end)
+    if t2 == "" or t2 == "nil" or t2 == "MenuReduxElement_Root" then return nil end
+    -- Screens with their own menu (Hype game, Clubbox tutorial) are handled
+    -- the usual way; a lingering one can still be named here with nothing on it.
+    if menuState.usable(menus[t2]) then return nil end
+    local e = liveMenu("empty")
+    local own = e and findNamed(e, t2, 3)
+    if own and isVisible(own) then return { el = own, name = t2 } end
+    return nil
+end
+FRIENDLY.__emptyState = { at = -100 }
+function FRIENDLY.__emptyTick(now)
+    local E = FRIENDLY.__emptyState
+    if now - E.at < 0.25 then return end
+    E.at = now
+    -- Never while the Market is up (see the quiet period).
+    if now - FRIENDLY.__storeSeenAt < 2 then return end
+    if not (liveMenu("hud") or liveMenu("hud_clubbox")) then return end
+    local p = FRIENDLY.__emptyPopup()
+    local name = p and p.name or nil
+    -- A popup counts as closed only after a full second without it: screens
+    -- like the Hype game drop out for a moment and must not be re-announced.
+    if name == E.name then E.goneAt = nil return end
+    if not name then
+        E.goneAt = E.goneAt or now
+        if now - E.goneAt >= 1 then E.name, E.goneAt = nil, nil end
+        return
+    end
+    E.name, E.goneAt = name, nil
+    -- Screens with their own menu (the Hype game, Clubbox tutorial) are
+    -- announced the usual way; this is only for ones that have none.
+    if menuState.usable(menus[name]) then return end
+    if p and not (lastAnnounced.id == name and now - lastAnnounced.t < 3) then
+        later(0.3, function()
+            -- Announced meanwhile by its own screen, or it has one now.
+            if lastAnnounced.id == name and clock() - lastAnnounced.t < 3 then return end
+            if menuState.usable(menus[name]) then return end
+            lastAnnounced.id, lastAnnounced.t = name, clock()
+            pcall(announcePopup, name, p.el)
+        end)
+    end
 end
 
 -- Encore event info: name, theme, how points are earned ("15m = 1"), and the
@@ -2286,6 +2473,17 @@ FRIENDLY.__looks = {
     f = "A dark creature that is mostly a huge grin of square yellow teeth, with two glowing red eyes peeking over it.",
     g = "A ghostly, see-through purple creature with golden eyes and a wide, fanged smile.",
 }
+-- Monsters whose element letters don't tell them apart (every Dipster's
+-- genes are "Q"), by name. Dipster portraits q01-q07 run Do to Ti.
+FRIENDLY.__looksByName = {
+    Do = "A small blue creature with a big white onion bulb on its head, round eyes and a wide, toothy smile.",
+    Re = "A small orange creature like a carrot, with a tuft of green leaves on top and a wide, toothy grin.",
+    Mi = "A small green creature wearing a big pale spiral snail shell on its head, with round eyes and a toothy grin.",
+    Fa = "A small dark grey-blue creature topped with a spiky brown plant like an artichoke, with a wide, toothy grin.",
+    Sol = "A small yellow, spongy creature with tall green grass and orange sprouts growing from its head and a big open smile.",
+    La = "A small white creature under a big green mushroom cap with white spots, with a toothy grin.",
+    Ti = "A small pink, fuzzy creature with a clump of soil and an orange flower on its head and big shiny black eyes.",
+}
 FRIENDLY.__elementLetters = { a = "Air", b = "Plant", c = "Earth", d = "Water", e = "Cold" }
 -- A monster type's Natural elements as words ("Earth and Water"), and how
 -- many, from game.monsterTypeGenes. nil for other elements (Ethereal etc.).
@@ -2550,6 +2748,293 @@ FRIENDLY.__guidePages = {
     "Advanced. You can improve your breeding chances for Special Monsters by breeding higher Level Monsters together. You can also improve your chances by lighting Wishing Torches, unlocked at Level 12. The picture shows a level 10 T-Rox and a lit Wishing Torch.",
 }
 FRIENDLY.__guide = { page = nil, at = 0 }
+-- Event screens: the event's name (Subtitle, when it has words) and its
+-- two lines of description.
+function POPUP_READERS.__eventScreen(popup)
+    local parts = { shownText(popup, "Subtitle") or "New event" }
+    for _, nm in ipairs({ "Description1", "Description2" }) do
+        local t = shownText(popup, nm)
+        if t then parts[#parts + 1] = t end
+    end
+    return joinSentences(parts)
+end
+-- Clubbox (ClubboxActSelect / ClubboxTutorialPopup): whoever is talking
+-- (DJNametag) says DJWordsLabel; the act cards and island carousel are pictures.
+FRIENDLY.__club = { at = -100 }
+function FRIENDLY.__clubSpeaker(root)
+    local who = shownText(root, "DJNametag")
+    return who and (who .. ": ") or ""
+end
+function FRIENDLY.__clubAct(root)
+    local sel = findNamed(root, "ActSelect", 3)
+    if not sel then return nil end
+    local id = nil
+    pcall(function() id = sel.selectedActId end)
+    if type(id) ~= "number" or id <= 0 then return nil end
+    local parts = {}
+    pcall(function() parts[1] = "Act: " .. cleanText(LOC(game.getClubboxActTitle(id))) end)
+    for _, nm in ipairs({ "HypeCount", "RewardCount" }) do
+        local t = shownText(sel, nm)
+        if t then parts[#parts + 1] = t end
+    end
+    return id, joinSentences(parts)
+end
+function FRIENDLY.__clubIsland(root)
+    local car = findNamed(root, "IslandCarousel", 3)
+    if not car or not isVisible(car) then return nil end
+    local id = nil
+    pcall(function() id = findNamed(root, "IslandSelect", 2).selectedIslandId end)
+    if type(id) ~= "number" then return nil end
+    local name = "Island " .. id
+    pcall(function() name = cleanText(LOC(game.islandName(id))) end)
+    local owned = true
+    pcall(function() owned = game.isIslandOwned(id) and true or false end)
+    return id, name .. (owned and "" or ", you don't have this island")
+end
+function POPUP_READERS.__club(popup)
+    local C = FRIENDLY.__club
+    local parts = {}
+    local words = shownText(popup, "DJWordsLabel")
+    if words then C.spoken = words; parts[#parts + 1] = FRIENDLY.__clubSpeaker(popup) .. words end
+    local id, act = FRIENDLY.__clubAct(popup)
+    if act then C.actSpoken = id; parts[#parts + 1] = act end
+    if #parts == 0 then return nil end
+    return joinSentences(parts)
+end
+POPUP_READERS.clubbox_act_select = POPUP_READERS.__club
+POPUP_READERS.clubbox_progress = function(popup)
+    local parts = { "Hype progress" }
+    local hype = shownText(popup, "HypeBlob")
+    if hype then parts[#parts + 1] = hype end
+    local a, b = (shownText(popup, "RewardBlob") or ""):match("(%d+)%s*/%s*(%d+)")
+    if a then parts[#parts + 1] = "Rewards earned: " .. a .. " of " .. b end
+    local left = shownText(popup, "TimeFrame")
+    if left and not left:find("^[0:%s]+$") then parts[#parts + 1] = left .. " left" end
+    local p1, p2 = shownText(popup, "TopPrize1"), shownText(popup, "TopPrize2")
+    if p1 then parts[#parts + 1] = "Top prizes: " .. p1 .. (p2 and (" and " .. p2) or "") end
+    return joinSentences(parts)
+end
+-- CUSTOMIXER performers: each row (PropN) is one monster in the act
+-- (game.clubboxPropMonster); its icon opens that monster's costumes.
+function FRIENDLY.__mixPerformer(row)
+    local ind = nil
+    pcall(function() ind = row.propInd end)
+    local name = nil
+    if type(ind) == "number" and ind >= 0 then
+        local tid = nil
+        pcall(function() tid = game.clubboxPropMonster(ind) end)
+        pcall(function() name = cleanText(LOC(game.getMonsterData(tid):name())) end)
+        if name and FRIENDLY.__withRarity then name = FRIENDLY.__withRarity(name, tid) end
+        -- Act DJs are props named by their icon (button_djepic -> DJ Epic);
+        -- the monster behind them (Hoola) isn't what the act calls them.
+        local icon = nil
+        pcall(function() icon = tostring(game.clubboxPropCustomizeIcon(ind)) end)
+        local dj = icon and icon:match("^button_dj(%a+)")
+        if dj then name = "DJ " .. dj:sub(1, 1):upper() .. dj:sub(2) end
+        FRIENDLY.__mixLogged = FRIENDLY.__mixLogged or {}
+        if not FRIENDLY.__mixLogged[ind] then
+            FRIENDLY.__mixLogged[ind] = true
+            local dj, audio, cost = nil, nil, nil
+            pcall(function() dj = game.getDJHoolaPropInd() end)
+            pcall(function() audio = game.hasAudioTrack(ind) end)
+            pcall(function() cost = game.clubboxPropCustomizeIcon(ind) end)
+            a11y_log("[mixer] prop " .. tostring(ind) .. " monster " .. tostring(tid) .. " -> " .. tostring(name)
+                .. " dj " .. tostring(dj) .. " audio " .. tostring(audio) .. " icon " .. tostring(cost))
+        end
+        local unlocked = true
+        pcall(function() unlocked = game.clubboxPropUnlocked(ind) and true or false end)
+        if not unlocked then return (name or "Performer") .. ", locked" end
+    end
+    -- The DJ's row (it has an OptionsIcon) opens the options page instead.
+    if findNamed(row, "OptionsIcon", 1) then return (name or "DJ") .. ", options" end
+    return (name or "Performer") .. ", costumes"
+end
+-- Stage decor buttons: which part of the stage (from the button's icon
+-- name) and the style number shown on it ("-" locked, "!" new style).
+function FRIENDLY.__mixStage(bg, btn)
+    local id, icon = nil, nil
+    pcall(function() id = bg.buttonId end)
+    pcall(function() icon = tostring(game.getStageEdButtonIcon(id)) end)
+    local part = icon and icon:lower():gsub("^.*/", ""):gsub("%.%w+$", "")
+        :gsub("^icon_", ""):gsub("^button_", ""):gsub("^customize_", ""):gsub("_", " ")
+    if not part or part == "" or part == "nil" then part = "part " .. tostring(id) end
+    part = part:gsub("^deco ", "decor, ")
+    local t = elementText(btn)
+    local total = nil
+    pcall(function() total = game.getStageEditorNumVariants(id) end)
+    if t == "-" then return "Stage " .. part .. ", locked" end
+    if t == "!" then return "Stage " .. part .. ", new style to try" end
+    return "Stage " .. part .. (t and (", style " .. t .. (type(total) == "number" and (" of " .. total) or "")) or "")
+end
+-- A performer's volume slider: who, how loud, and the keys. nil when it
+-- isn't one (or the performer has no sound to mix).
+function FRIENDLY.__mixRow(slider)
+    local row = nil
+    pcall(function() row = slider:parent():parent() end)
+    local ind = nil
+    pcall(function() ind = row.propInd end)
+    if type(ind) ~= "number" or ind < 0 then return nil end
+    return row, ind
+end
+function FRIENDLY.__mixVolume(slider)
+    local row, ind = FRIENDLY.__mixRow(slider)
+    if not row then return nil end
+    local vol = nil
+    pcall(function() vol = game.clubboxPropVolume(ind) end)
+    if type(vol) ~= "number" then return nil end
+    local who = FRIENDLY.__mixPerformer(row):gsub(", %a+$", "")
+    local audio = true
+    pcall(function() audio = game.hasAudioTrack(ind) ~= false end)
+    if not audio then return who .. ", no sound to mix" end
+    return who .. " volume, slider, " .. math.floor(vol * 100 + 0.5) .. " percent"
+end
+-- Control+Shift+A in the Clubbox: the act, where it plays, Hype toward the
+-- next reward, tickets and time left (game.existingClubboxAct etc., as
+-- ClubboxActSelect / ClubboxProgress use them).
+function FRIENDLY.__clubStatus()
+    local parts = {}
+    local act, title, island = nil, nil, nil
+    pcall(function() act = game.existingClubboxAct() end)
+    pcall(function() title = cleanText(LOC(game.getClubboxActTitle(act))) end)
+    pcall(function() island = cleanText(LOC(game.islandName(game.existingClubboxIslandId()))) end)
+    parts[1] = "Clubbox" .. (title and (", " .. title) or "") .. (island and (", on " .. island) or "")
+    local hud = liveMenu("hud_clubbox")
+    local a, b = (elementText(hud and findNamed(hud, "RewardBar", 3)) or ""):match("(%d+)%s*/%s*(%d+)")
+    if a then parts[#parts + 1] = "Hype " .. a .. " of " .. b .. " to the next reward" end
+    local total = nil
+    pcall(function() total = game.clubboxCurHype(act) end)
+    if type(total) == "number" then parts[#parts + 1] = "Hype generated: " .. total end
+    local tickets = elementText(hud and findNamed(hud, "TokenCounter", 2) and findNamed(findNamed(hud, "TokenCounter", 2), "currency_counter_12", 1))
+    if not tickets and hud then
+        local tc = findNamed(hud, "TokenCounter", 2)
+        local first = nil
+        pcall(function() first = tc:elements()[0] end)
+        tickets = first and elementText(first)
+    end
+    if tickets then parts[#parts + 1] = tickets .. " Clubbox Tickets" end
+    local left = nil
+    pcall(function() left = cleanText(game.timeToString(game.clubboxShortestTimeAvail())) end)
+    if left and left ~= "" then parts[#parts + 1] = left .. " left" end
+    return joinSentences(parts)
+end
+-- Say the new style after pressing a stage decor button.
+FRIENDLY.__mix = { at = -100, styles = {} }
+function FRIENDLY.__mixTick(root, now)
+    local M = FRIENDLY.__mix
+    if now - M.at > 1.5 then M.styles = {} end
+    M.at = now
+    for i = 0, 2 do
+        local bg = findNamed(root, "StageEditorBg" .. i, 4)
+        local v = nil
+        if bg then pcall(function() v = bg.activeVariantInd end) end
+        if v ~= nil then
+            local old = M.styles[i]
+            M.styles[i] = v
+            if old ~= nil and old ~= v then
+                later(0.2, function()
+                    local r = liveMenu("clubbox_customization")
+                    local b = r and findNamed(r, "StageEditorBg" .. i, 4)
+                    local btn = b and findNamed(b, "VariantControlButton", 1)
+                    if btn then say(FRIENDLY.__mixStage(b, btn), true) end
+                end)
+            end
+        end
+    end
+end
+POPUP_READERS.popup_clubbox_unlock_fanfare = function(popup)
+    local who = shownText(popup, "MonsterName")
+    local what = shownText(popup, "MonsterInfo")
+    if not who and not what then return nil end
+    local t = (((who or "") .. " " .. (what or "")):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", ""))
+    if not t:find("[%.!?]$") then t = t .. "!" end
+    return t
+end
+POPUP_READERS.open_card_pack = function(popup)
+    local left = shownText(popup, "CurrencyCounter")
+    return "Sticker pack" .. (left and (". " .. left .. " packs left") or "")
+end
+POPUP_READERS.clubbox_tutorial_popup = POPUP_READERS.__club
+-- Hype game: say the ticket amount when it changes (with what the wheels can
+-- give for it), and the spin's result ("40*3=120") once the wheels stop.
+FRIENDLY.__hype = { at = -100 }
+function FRIENDLY.__hypeOdds(g)
+    local function list(t)
+        local out = {}
+        pcall(function() for i = 1, #t do out[#out + 1] = tostring(t[i]) end end)
+        if #out == 0 then return nil end
+        if #out == 1 then return out[1] end
+        return table.concat(out, ", ", 1, #out - 1) .. " or " .. out[#out]
+    end
+    local base, multi = nil, nil
+    pcall(function() base = list(g.baseValues) end)
+    pcall(function() multi = list(g.multiValues) end)
+    if not base then return nil end
+    return "The left wheel gives " .. base .. " Hype" .. (multi and (", the right wheel multiplies it by " .. multi) or "")
+end
+function FRIENDLY.__hypeTick(root, now)
+    local H = FRIENDLY.__hype
+    if now - H.at > 1.5 then H.tickets, H.result = nil, nil end
+    H.at = now
+    local g = findNamed(root, "hype_game", 2)
+    if not g then return end
+    local tickets, result = nil, nil
+    pcall(function() tickets = g.currentTickets end)
+    pcall(function() result = g.currentResult end)
+    if type(tickets) == "number" and tickets ~= H.tickets then
+        local first = H.tickets == nil
+        H.tickets = tickets
+        a11y_log("[hype] tickets " .. tostring(tickets))
+        later(first and 1.5 or 0.15, function()
+            local r = liveMenu("hype_game")
+            local g2 = r and findNamed(r, "hype_game", 2)
+            local odds = g2 and FRIENDLY.__hypeOdds(g2)
+            say(tickets .. " tickets" .. (odds and (". " .. odds) or ""), not first)
+        end)
+    end
+    if type(result) == "string" and result ~= H.result then
+        H.result = result
+        a11y_log("[hype] result " .. result)
+        local a, b, c = result:match("^%s*(%d+)%s*%*%s*(%d+)%s*=%s*(%d+)")
+        if c then later(0.3, function() say("Result: " .. a .. " times " .. b .. ", " .. c .. " Hype!", true) end) end
+    end
+end
+function FRIENDLY.__clubTick(root, now)
+    local C = FRIENDLY.__club
+    if now - C.at > 1.5 then
+        C.words, C.spoken, C.act, C.actSpoken, C.island = nil, nil, nil, nil, nil
+    end
+    C.at = now
+    local words = shownText(root, "DJWordsLabel")
+    if words and words ~= C.words then
+        local first = C.words == nil
+        C.words = words
+        local who = FRIENDLY.__clubSpeaker(root)
+        later(first and 0.8 or 0.3, function()
+            if C.spoken == words then return end
+            C.spoken = words
+            say(who .. words, true)
+        end)
+    end
+    -- The act picked (cards, Left / Right): its name, Hype and rewards.
+    local id, act = FRIENDLY.__clubAct(root)
+    if id and id ~= C.act then
+        C.act = id
+        later(0.4, function()
+            if C.actSpoken == id then return end
+            C.actSpoken = id
+            -- (A fresh root: this frame's may be gone by then.)
+            local r, now2 = liveMenu("clubbox_act_select"), nil
+            if r then local _i, t = FRIENDLY.__clubAct(r); now2 = t end
+            say(now2 or act, false)
+        end)
+    end
+    -- The island picked on the carousel.
+    local iid, island = FRIENDLY.__clubIsland(root)
+    if iid ~= C.island then
+        C.island = iid
+        if iid then later(0.3, function() say("Island: " .. island, false) end) end
+    end
+end
 function FRIENDLY.__newsTick(root, now)
     local G = FRIENDLY.__guide
     if now - G.at > 1.5 then G.page = nil end
@@ -2577,6 +3062,7 @@ function FRIENDLY.__appearance()
     if not tid then pcall(function() tid = game.selectedMonsterTypeId() end) end
     local name = nil
     pcall(function() name = cleanText(LOC(game.getMonsterData(tid):name())) end)
+    local byName = name and FRIENDLY.__looksByName[name]
     name = FRIENDLY.__withRarity(name or "This monster", tid)
     -- Key the description by the monster's element letters (game.
     -- monsterTypeGenes, same numbering as its name). The portrait codes are
@@ -2600,7 +3086,7 @@ function FRIENDLY.__appearance()
     end
     if base and not base:find("^[a-g]+$") then base = nil end
     local parts = { name }
-    local desc = base and FRIENDLY.__looks[base]
+    local desc = byName or (base and FRIENDLY.__looks[base])
     parts[#parts + 1] = desc or "No description yet"
     local list, count = FRIENDLY.__elementsOf(tid)
     if list then parts[#parts + 1] = (count == 1 and "Element: " or "Elements: ") .. list end
@@ -2887,7 +3373,7 @@ function FRIENDLY.__warp.step(d)
 end
 POPUP_READERS.warp_popup = function(popup)
     return joinSentences({ shownText(popup, "Label") or "Time Warper", FRIENDLY.__warp.text(),
-        "Tab to Faster, Slower or Normal speed. Escape when done" })
+        "Tab to Faster, Slower or Normal speed, or Shift Comma and Shift Period. Escape when done" })
 end
 
 -- XP to the next level (X / Control+Shift+X). CurrencyCounterAvatarXP.lua
@@ -3246,6 +3732,13 @@ local function tapSelected()
     say("Tap " .. name, true)
     -- Selected Nursery with a finished egg: hatch it the game's way first
     -- (see activateObject); click only if that didn't take.
+    -- On a friend's island: a plain click, nothing the game wouldn't do.
+    if FRIENDLY.__visiting and FRIENDLY.__visiting() then
+        tapEntity(obj, name, key, nil, function(hit)
+            if not hit then say("Something is in front of " .. name .. ". Could not tap it.", true) end
+        end)
+        return
+    end
     local ready = false
     if name:lower():find("nursery", 1, true) then
         pcall(function() ready = game.eggReadyToHatch() and true or false end)
@@ -3517,6 +4010,8 @@ function menuState.levelWatch(now)
     local w = menuState.levels
     if now - w.t < 0.25 then return end
     w.t = now
+    local fh = menus.friend_hud
+    if fh and now - fh.t < 3 then w.uid = nil return end
     local uid, lvl = nil, nil
     pcall(function() uid = game.selectedMonsterId() end)
     if not uid or uid == 0 then w.uid = nil return end
@@ -3559,7 +4054,110 @@ end
 
 local OBJECT_GROUPS = { [0] = "Buildings", [1] = "Monsters", [2] = "Decorations", [3] = "Trees and rocks" }
 
+-- Visiting a friend's island (one table lookup: the visiting HUD ticked just now).
+function FRIENDLY.__visiting()
+    local fh = menus.friend_hud
+    return fh ~= nil and clock() - fh.t < 0.5
+end
+-- A friend's island. game.getVisitedFriend():getActiveIsland() lists their
+-- objects; GetMonster / GetStructure look objects up on the island on screen
+-- (theirs). Enter does exactly what a finger would: bring it into view and
+-- tap it. No direct selecting, so the game decides what a visitor may do.
+function FRIENDLY.__friendObjects()
+    local isl = nil
+    pcall(function() isl = game.getVisitedFriend():getActiveIsland() end)
+    if not isl then return {} end
+    local function entry(label, rank, find, key)
+        return { label, name = label, rank = rank, function()
+            vmenu.active = false
+            local ent = nil
+            pcall(function() ent = find() end)
+            say(label, true)
+            tapEntity(ent, label, key, nil, function(hit)
+                if not hit then say("Something is in front of " .. label .. ". Could not tap it.", true) return end
+                if selectionIs(key, label) then say(label .. " selected. Tab for what you can do.", true) end
+            end, true)
+        end }
+    end
+    local structs, total, nth, logged = {}, {}, {}, 0
+    pcall(function()
+        local ss = isl:structures()
+        for i = 0, ss:size() - 1 do
+            local id = ss[i]
+            local ent = nil
+            pcall(function() ent = game.GetStructure(id) end)
+            -- Name it from the object on screen (theirs), the way the game's
+            -- scripts do (entityId -> getStructureByEntityId / entityName);
+            -- structureLabel looks the id up in YOUR data, so it's a fallback.
+            local eid, how, label = nil, nil, nil
+            for _, m in ipairs({ "entityId", "getEntityId", "entityID" }) do
+                if not eid then pcall(function() eid = tonumber(ent[m](ent)) end) end
+            end
+            if eid then
+                pcall(function() label = cleanText(LOC(game.getStructureByEntityId(eid):name())); how = "structureByEntityId" end)
+                if not label or label == "" then label = FRIENDLY.__entityName(eid); how = "entityName" end
+            end
+            if not label or label == "" then label = structureLabel(id); how = "your data" end
+            label = (label and label ~= "") and label or "Structure"
+            -- Group: the object's own flags, else its structure data's type.
+            local rank = entityIs(ent, "isObstacle") and 3 or (entityIs(ent, "isDecoration") and 2 or 0)
+            if rank == 0 and eid then
+                local sd = nil
+                pcall(function() sd = game.getStructureByEntityId(eid) end)
+                if entityIs(sd, "isObstacle") then rank = 3 elseif entityIs(sd, "isDecoration") then rank = 2 end
+            end
+            if not FRIENDLY.__friendLogged and logged < 8 then
+                logged = logged + 1
+                a11y_log("[friend] structure " .. tostring(id) .. " eid " .. tostring(eid) .. " -> " .. tostring(label)
+                    .. " (" .. tostring(how) .. ") rank " .. rank)
+            end
+            structs[#structs + 1] = { label = label, rank = rank, id = id }
+            total[label] = (total[label] or 0) + 1
+        end
+    end)
+    local mons = {}
+    pcall(function()
+        local ms = isl:monsters()
+        for i = 0, ms:size() - 1 do
+            local uid = ms[i]
+            local ent, tid, lvl, species = nil, nil, nil, nil
+            pcall(function() ent = game.GetMonster(uid) end)
+            pcall(function() tid = ent:monsterTypeId() end)
+            pcall(function() lvl = ent:level() end)
+            pcall(function() species = cleanText(LOC(game.getMonsterData(tid):name())) end)
+            species = FRIENDLY.__withRarity(species, tid)
+            if not FRIENDLY.__friendLogged and i < 3 then
+                a11y_log("[friend] monster " .. tostring(uid) .. " -> " .. tostring(species) .. " level " .. tostring(lvl))
+            end
+            if species then
+                mons[#mons + 1] = entry(species .. (lvl and (", level " .. lvl) or ""), 1,
+                    function() return game.GetMonster(uid) end, "m" .. tostring(uid))
+            end
+        end
+    end)
+    FRIENDLY.__friendLogged = true
+    local items = {}
+    for _, st in ipairs(structs) do
+        if total[st.label] > 1 then
+            nth[st.label] = (nth[st.label] or 0) + 1
+            st.label = st.label .. " " .. nth[st.label]
+        end
+        local sid = st.id
+        st.item = entry(st.label, st.rank, function() return game.GetStructure(sid) end, "s" .. tostring(sid))
+    end
+    for _, st in ipairs(structs) do if st.rank == 0 then items[#items + 1] = st.item end end
+    for _, m in ipairs(mons) do items[#items + 1] = m end
+    for rank = 2, 3 do
+        for _, st in ipairs(structs) do if st.rank == rank then items[#items + 1] = st.item end end
+    end
+    return items
+end
+
 local function islandObjects()
+    if FRIENDLY.__visiting() then return FRIENDLY.__friendObjects() end
+    -- In the Clubbox, game.player()'s island is still your home island.
+    local club = menus.hud_clubbox
+    if club and clock() - club.t < 0.5 then return {} end
     local items = {}
     -- Buildings first, then monsters, decorations, and trees/rocks last.
     -- Repeated names get a number: "Small Tree 2".
@@ -4376,8 +4974,18 @@ local function navContext()
     local gridLeftover = menuState.sidePanels[currentPopupName()]
     if not popupOpen() or gridLeftover then
         popupStack = {}
-        local ov, ovName = topOverlay()
-        if ov then return { ov }, "popup:" .. ovName, {} end
+        local inEmpty = FRIENDLY.__emptyPopup()
+        if inEmpty then return { inEmpty.el }, "popup:" .. inEmpty.name, {} end
+        local ov, ovName, ovFile = topOverlay()
+        if ov then
+            -- Screens can share one root (a reward popup over the Hype game):
+            -- list only the newest screen's own element.
+            if ovName == ovFile then
+                local own = findNamed(ov, ovFile, 3)
+                if own and isVisible(own) then ov = own end
+            end
+            return { ov }, "popup:" .. ovName, {}
+        end
         -- No popup or overlay: navigate the island.
         local cb = liveMenu("contextbar")
         if objectSelected() then
@@ -4399,6 +5007,8 @@ local function navContext()
         local roots = {}
         if cb then roots[#roots + 1] = cb end
         local ok, hud = pcall(game.getHUD); if ok and hud then roots[#roots + 1] = hud end
+        local club = liveMenu("hud_clubbox")
+        if club then roots[#roots + 1] = club end
         local virtual = {}
         local target = tutorialTarget()
         if target then virtual[1] = { "Tutorial: " .. target[1], target[2], first = true, group = "Tutorial" } end
@@ -4512,6 +5122,7 @@ end
 
 -- edge: Home/End, jump to the first (dir < 0) or last (dir > 0) item.
 local function navMove(dir, edge)
+    a11y_log("[timing] Tab code starts")
     if FRIENDLY.__keysLocked() then return end
     if vmenu.active then                        -- Places / Objects list takes precedence
         local n = #vmenu.items
@@ -4543,6 +5154,7 @@ local function navMove(dir, edge)
     -- Entering a named list ("Monster 1 list") says its name first.
     local g = nav.groups[nav.index]
     local prefix = (g and g:find(" list$") and g ~= nav.groups[prev]) and (g .. ". ") or ""
+    a11y_log("[timing] Tab text sent to speech")
     say(prefix .. (nav.labels[nav.index] or "item") .. ", " .. nav.index .. " of " .. #nav.items, true)
 end
 
@@ -4839,6 +5451,12 @@ local function navActivate()
         pcall(nav.muteGameEnter)
         menuState.touch()
         pcall(el.virtual)
+        return
+    end
+    -- Enter on a slider resets it (a tap would set it to wherever it landed).
+    if (elementName(el) == "SliderBg" and elementName(el:parent()) == "VolumeControl")
+        or (elementName(el) == "Slider" and (liveMenu("volume_popup") or liveMenu("scale_popup") or liveMenu("warp_popup"))) then
+        if FRIENDLY.__adjust then FRIENDLY.__adjust("reset") end
         return
     end
     pcall(nav.muteGameEnter, el)                -- before the press, never after
@@ -5487,6 +6105,21 @@ end
 local function watchWallet(now)
     if now - wallet.t < WALLET_POLL_SECONDS then return end
     wallet.t = now
+    -- Visiting a friend (and 3 seconds after): balances and level read as
+    -- theirs. Drop everything and start over from a fresh baseline at home.
+    -- A loading screen (going to a friend's island loads it first, with
+    -- their balances already in place) counts the same.
+    local busy = false
+    -- (Not load_fade: it keeps ticking while the Market is open, and purchases
+    -- there should still be announced.)
+    for _, f in ipairs({ "friend_hud", "load_overlay", "load_full" }) do
+        local m = menus[f]
+        if m and now - m.t < 3 then busy = true end
+    end
+    if busy then
+        wallet.last, wallet.pending, wallet.changed, wallet.ready = nil, {}, nil, nil
+        return
+    end
     -- Balances load in after the game starts: only watch once an island is up,
     -- and start from a fresh baseline whenever there was none.
     local isl = nil
@@ -5673,6 +6306,35 @@ end
 
 local function probeStatus()
     a11y_log("-- STATUS PROBE --")
+    -- Visiting a friend: what the game gives for their island (dump only).
+    local fh = menus.friend_hud
+    if fh and clock() - fh.t < 1 then
+        a11y_log("  -- visiting a friend --")
+        probeCall("game.isFriendMode()", function() return game.isFriendMode() end)
+        local vf, cfi = nil, nil
+        pcall(function() vf = game.getVisitedFriend() end)
+        pcall(function() cfi = game.currentFriendIsland() end)
+        a11y_log("    getVisitedFriend = " .. tostring(vf) .. "  members: " .. tostring(type(vf) == "userdata" and swigMembers(vf)))
+        a11y_log("    currentFriendIsland = " .. tostring(cfi) .. "  members: " .. tostring(type(cfi) == "userdata" and swigMembers(cfi)))
+        for _, src in ipairs({ { "currentFriendIsland", function() return cfi end },
+                               { "friend:getActiveIsland", function() return vf:getActiveIsland() end },
+                               { "friend:activeIsland", function() return vf:activeIsland() end },
+                               { "friend:getIsland", function() return vf:getIsland(cfi) end } }) do
+            local isl = nil
+            pcall(function() isl = src[2]() end)
+            if type(isl) == "userdata" then
+                a11y_log("    " .. src[1] .. " = " .. tostring(isl) .. "  members: " .. swigMembers(isl))
+                probeCall(src[1] .. " monsters", function() return isl:monsters():size() end)
+                probeCall(src[1] .. " structures", function() return isl:structures():size() end)
+                probeCall(src[1] .. " first monster", function()
+                    local m = isl:monsters()[0]
+                    return tostring(m) .. " " .. swigMembers(m)
+                end)
+            else
+                a11y_log("    " .. src[1] .. " = " .. tostring(isl))
+            end
+        end
+    end
     for _, c in ipairs(READY_CHECKS) do
         probeCall("island:" .. c[1], function() local i = game.player():getActiveIsland(); return i[c[1]](i) end)
     end
@@ -5814,6 +6476,10 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
         local root = liveMenu("login_base")
         local status = root and shownText(root, "ConnectionStatus")
         if status then say(status, true) return end
+        if liveMenu("hud_clubbox") and FRIENDLY.__clubStatus then
+            local t = FRIENDLY.__clubStatus()
+            if t then say(t, true) return end
+        end
         if liveMenu("battle_base") and FRIENDLY.__battleHealth then
             local hp = FRIENDLY.__battleHealth()
             if hp then say(hp, true) return end
@@ -5879,7 +6545,93 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
         placeAt.t = -100
         say("Camera reset to the whole island", true)
     end
+-- Sliders: Shift+Comma / Shift+Period step down / up, Shift+Home /
+-- Shift+End go to the ends, Enter on a slider resets it. Each kind sets its
+-- value the way dragging does (the game's own setter), then moves the knob.
+-- A kind is either the focused element (CUSTOMIXER volumes) or the only
+-- slider on an open screen (Time Warper, monster volume, decoration size).
+function FRIENDLY.__pct(v) return math.floor(v * 100 + 0.5) .. " percent" end
+function FRIENDLY.__knob(screen, x)
+    later(0.05, function()
+        local root = liveMenu(screen)
+        local slider = root and findNamed(root, "Slider", 3)
+        if slider then pcall(function() slider:C("Sprite")("xOffset"):SetFloat(x(slider:absW())) end) end
+    end)
+end
+FRIENDLY.__sliderKinds = {
+    -- Time Warper speed, 0.5 to 2 (1 is normal).
+    { screen = "warp_popup", name = "Time warp", min = 0.5, max = 2, reset = 1, step = 0.1,
+      get = function() return FRIENDLY.__warp.get() end,
+      set = function(v) FRIENDLY.__warp.set(v) end, speaks = true },
+    -- Monster volume (volume_popup.xml), 0 to 1.
+    { screen = "volume_popup", name = "Monster volume", min = 0, max = 1, reset = 1, step = 0.1,
+      get = function() local v = 1; pcall(function() v = tonumber(game.monsterVolume()) or 1 end) return v end,
+      set = function(v)
+          pcall(function() game.setMonsterVolume(v) end)
+          FRIENDLY.__knob("volume_popup", function(w) return w * 0.85 * (v - 0.5) end)
+      end,
+      text = function(v) return FRIENDLY.__pct(v) end },
+    -- Decoration size (scale_popup.xml), 0.7 to 1.1 (1 is normal).
+    { screen = "scale_popup", name = "Decoration size", min = 0.7, max = 1.1, reset = 1, step = 0.05,
+      get = function() local v = 1; pcall(function() v = tonumber(game.decorationScale()) or 1 end) return v end,
+      set = function(v)
+          pcall(function() game.setDecorationScale(v) end)
+          FRIENDLY.__knob("scale_popup", function(w)
+              local half = w * 0.85 / 2
+              return v >= 1 and half * ((v - 1) / 0.1) or -half * ((1 - v) / 0.3)
+          end)
+      end,
+      text = function(v) return FRIENDLY.__pct(v) end },
+}
+-- The CUSTOMIXER volume under focus, as a slider kind.
+function FRIENDLY.__mixSliderKind(el)
+    local isSlider = false
+    pcall(function() isSlider = elementName(el) == "SliderBg" and elementName(el:parent()) == "VolumeControl" end)
+    if not isSlider then return nil end
+    local row, ind = FRIENDLY.__mixRow(el)
+    if not row then return false end
+    local audio = true
+    pcall(function() audio = game.hasAudioTrack(ind) ~= false end)
+    if not audio then return false end
+    return { min = 0, max = 1, reset = 1, step = 0.1,
+        get = function() local v = 0; pcall(function() v = game.clubboxPropVolume(ind) end) return v end,
+        set = function(v)
+            pcall(function() game.setClubboxPropVolume(ind, v) end)
+            pcall(function()
+                el.Touch.vol = game.clubboxPropVolume(ind)
+                el.Touch:redraw(el)
+            end)
+            local t = FRIENDLY.__mixVolume(el)
+            if t then nav.labels[nav.index] = t end
+        end,
+        text = function(v) return FRIENDLY.__pct(v) end }
+end
+-- dir: -1 / 1 a step; "min" / "max" the ends; "reset" the normal value.
+function FRIENDLY.__adjust(dir)
+    local el = nav.items and nav.items[nav.index]
+    local kind = FRIENDLY.__mixSliderKind(el)
+    if kind == false then say("This one can't be changed", true) return end
+    if not kind then
+        for _, k in ipairs(FRIENDLY.__sliderKinds) do
+            if liveMenu(k.screen) then kind = k break end
+        end
+    end
+    if not kind then say("Nothing to adjust here", true) return end
+    local v = kind.get()
+    local new
+    if dir == "min" then new = kind.min
+    elseif dir == "max" then new = kind.max
+    elseif dir == "reset" then new = kind.reset
+    else new = v + dir * kind.step end
+    new = math.floor(new / kind.step + 0.5) * kind.step
+    if new < kind.min then new = kind.min elseif new > kind.max then new = kind.max end
+    kind.set(new)
+    if kind.speaks then return end
+    local now = kind.get()
+    say((dir == "reset" and "Reset. " or "") .. kind.text(now), true)
+end
     jeode.registerGlobal("a11y_camera", FRIENDLY.__keyGuard(nav.cameraKey))
+    jeode.registerGlobal("a11y_adjust", FRIENDLY.__keyGuard(function(dir) FRIENDLY.__adjust(dir) end))
     jeode.registerGlobal("a11y_poi", function(dir)
         if FRIENDLY.__keysLocked() then return end
         if placing() then poiStep(dir) else navGroupJump(dir) end

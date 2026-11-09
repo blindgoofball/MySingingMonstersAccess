@@ -2,6 +2,28 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## 0.1.13-alpha - 2026-11-09
+
+### Added
+
+- The Clubbox is accessible. Club manager Autotuna's lines are read (each tutorial page, and whoever else is talking), the act and island pickers say which act or island is selected with its Hype and rewards, and the Clubbox island's bar (EXIT, HELP, INFO, HYPE, CUSTOMIXER) is in the Tab list. Your home island's buildings and monsters are no longer listed while you're there.
+- The Hype game talks: Fewer tickets and More tickets say how many tickets you're spending and what the wheels can give, Spin spins, and when the wheels stop you hear the result, for example "Result: 120 times 3, 360 Hype!"
+- Hype progress reads your Hype, how many rewards you've earned, the time left and the top prizes, and each of the 27 reward stops says what it gives and whether it's earned, next or locked.
+- The CUSTOMIXER: each performer's volume slider ("Candelavra volume, slider, 40 percent"), the stage decor buttons with their style ("Stage decor, back stage, style 1 of 2", locked, or a new style to try), and the DJ's options page with its Motion FX switch.
+- Sliders can be adjusted from the keyboard: Shift+Comma and Shift+Period step down and up, Shift+Home and Shift+End go to the lowest and highest value, and Enter on a slider resets it. This works on the CUSTOMIXER volumes, the Time Warper, monster volume and decoration size.
+- A (fallback Control+Shift+A) in the Clubbox says the act, its island, your Hype toward the next reward, total Hype, your Clubbox Tickets and the time left.
+- Visiting a friend's island: Tab lists their buildings and monsters instead of yours, and Enter on one taps it, just like a finger would, so you can look at their things without doing anything a visitor can't.
+- Control+Shift+I describes the Dipsters (Do, Re, Mi, Fa, Sol, La and Ti).
+
+### Improved
+
+- The Clubbox and Sticker book buttons on your island's HUD were missing from Tab. They now say "Clubbox, 15d 23h left, 0 tickets" and "Sticker book, 2".
+- Screens you tap anywhere to continue (opening a sticker pack, a new performer joining your act) had nothing to press. They now have a Continue button and say what happened, for example "Sticker pack, 2 packs left" or "DJ Epic has joined the Act in the Clubbox!"
+- Event screens (a new Clubbox event, Dipster Digs) read their text instead of just "clubbox event screen".
+- Offers that pop up from a counter, such as "Would you like to top up your Clubbox Tickets now?", are announced with their question and Tab moves into them.
+- A popup that opens on top of another screen (a reward over the Hype game, a LISTEN UP! notice) lists only its own buttons, not the screen's behind it too.
+- Visiting a friend no longer announces false "Spent ..." or "Level up!" messages.
+
 ## 0.1.12-alpha - 2026-11-08
 
 ### Added
