@@ -6,7 +6,7 @@ What changed in each version of My Singing Monsters Access, newest first. Change
 
 ### Added
 
-- The Clubbox is accessible. Club manager Autotuna's lines are read (each tutorial page, and whoever else is talking), the act and island pickers say which act or island is selected with its Hype and rewards, and the Clubbox island's bar (EXIT, HELP, INFO, HYPE, CUSTOMIXER) is in the Tab list. Your home island's buildings and monsters are no longer listed while you're there.
+- The Clubbox is accessible. Club manager Autotuna's lines are read (each tutorial page, and whoever else is talking), the act and island pickers say which act or island is selected with its Hype and rewards, and the Clubbox island's bar (EXIT, HELP, INFO, HYPE, CUSTOMIXER) is in the Tab list.
 - The Hype game talks: Fewer tickets and More tickets say how many tickets you're spending and what the wheels can give, Spin spins, and when the wheels stop you hear the result, for example "Result: 120 times 3, 360 Hype!"
 - Hype progress reads your Hype, how many rewards you've earned, the time left and the top prizes, and each of the 27 reward stops says what it gives and whether it's earned, next or locked.
 - The CUSTOMIXER: each performer's volume slider ("Candelavra volume, slider, 40 percent"), the stage decor buttons with their style ("Stage decor, back stage, style 1 of 2", locked, or a new style to try), and the DJ's options page with its Motion FX switch.
