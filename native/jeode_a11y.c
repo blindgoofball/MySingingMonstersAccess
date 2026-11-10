@@ -72,7 +72,7 @@ static int game_is_foreground(void)
    frame boundary. Nav handlers are silent when no real popup is open, so plain
    Tab/Enter during normal play are harmless no-ops. */
 enum { HK_HUD = 0, HK_NAV_NEXT, HK_NAV_PREV, HK_ACTIVATE, HK_MENU, HK_TUTORIAL, HK_TUTSTEP, HK_DUMP, HK_OBJECTS, HK_LEFT, HK_RIGHT, HK_UP, HK_DOWN, HK_WHATNOW, HK_ESCAPE, HK_BACKSPACE, HK_POI_PREV, HK_POI_NEXT, HK_SPOT_PREV, HK_SPOT_NEXT, HK_CAMERA, HK_HOME, HK_END, HK_LOOKS,
-       HK_P_HUD, HK_P_WHATNOW, HK_P_MENU, HK_P_OBJECTS, HK_P_LOOKS, HK_P_CAMERA, HK_P_TUTSTEP, HK_LETTERS, HK_XP, HK_P_XP, HK_ADJ_DOWN, HK_ADJ_UP, HK_ADJ_MIN, HK_ADJ_MAX, HK_COUNT };
+       HK_P_HUD, HK_P_WHATNOW, HK_P_MENU, HK_P_OBJECTS, HK_P_LOOKS, HK_P_CAMERA, HK_P_TUTSTEP, HK_LETTERS, HK_XP, HK_P_XP, HK_ADJ_DOWN, HK_ADJ_UP, HK_ADJ_MIN, HK_ADJ_MAX, HK_ADVICE, HK_P_ADVICE, HK_COUNT };
 
 static const char *const g_hkLua[HK_COUNT] = {
     /* HK_HUD (Ctrl+Shift+A) */
@@ -139,6 +139,9 @@ static const char *const g_hkLua[HK_COUNT] = {
     /* HK_ADJ_MIN / HK_ADJ_MAX (Shift+Home / Shift+End) -- slider to 0% / 100% */
     "if type(a11y_adjust)=='function' then a11y_adjust('min') end",
     "if type(a11y_adjust)=='function' then a11y_adjust('max') end",
+    /* HK_ADVICE (Ctrl+Shift+F) / HK_P_ADVICE (F) -- advice for your island */
+    "if type(a11y_advice)=='function' then a11y_advice() end",
+    "if type(a11y_plainKey)=='function' then a11y_plainKey('advice') end",
 };
 
 /* ---------------------------------------------------------------------------
@@ -223,6 +226,7 @@ static unsigned __stdcall HotkeyProc(void *param)
             int plain = !ctrl && !shift && !KEY_DOWN(VK_MENU) && g_lettersOn;
             down[HK_P_HUD]     = plain && KEY_DOWN('A');
             down[HK_P_WHATNOW] = plain && KEY_DOWN('W');
+            down[HK_P_ADVICE]  = plain && KEY_DOWN('F');
             down[HK_P_MENU]    = plain && KEY_DOWN('M');
             down[HK_P_OBJECTS] = plain && KEY_DOWN('O');
             down[HK_P_LOOKS]   = plain && KEY_DOWN('I');
@@ -235,6 +239,7 @@ static unsigned __stdcall HotkeyProc(void *param)
         down[HK_ADJ_DOWN]  = shift && !ctrl && KEY_DOWN(VK_OEM_COMMA);
         down[HK_ADJ_UP]    = shift && !ctrl && KEY_DOWN(VK_OEM_PERIOD);
         down[HK_ADJ_MIN]   = shift && !ctrl && KEY_DOWN(VK_HOME);
+        down[HK_ADVICE]    = ctrl && shift && KEY_DOWN('F');
         down[HK_ADJ_MAX]   = shift && !ctrl && KEY_DOWN(VK_END);
 
         for (i = 0; i < HK_COUNT; i++) {

@@ -513,6 +513,13 @@ local function parentOf(el)
     local p = nil; pcall(function() p = el:parent() end)
     return p
 end
+-- A friend card's name, the way cardSummary reads it.
+local function cardName(card)
+    local full = nil
+    pcall(function() full = card("DisplayNameText"):GetString() end)
+    if full == "" then full = nil end
+    return full or elementText(findNamed(card, "DisplayName", 1))
+end
 local function cardSummary(card)
     local parts = {}
     local full = nil
@@ -727,6 +734,7 @@ local function socialLabel(el, name)
     -- highlight toggle and BUY MORE, told apart by their FunctionName.
     if name:find("^barItem%d+$") and FRIENDLY.__torchLabel then
         local t = FRIENDLY.__torchLabel(el) or FRIENDLY.__upgradeLabel(el) or FRIENDLY.__speedUpLabel(el)
+            or FRIENDLY.__removeLabel(el)
         if t then return t, true end
     end
     -- Promo tray (PromoCenterItem_<id>): a picture plus a countdown. Name the
@@ -838,6 +846,19 @@ local function socialLabel(el, name)
     if name == "VariantControlButton" and pn and pn:find("^StageEditorBg%d+$") then
         return FRIENDLY.__mixStage(p, el), true
     end
+    -- Fuzer CONJURE (fuzer_create.xml): three Glowbes to pick from, entries
+    -- named 0, 1 and 2, coloured by game.tintDefaultBuddy(entry, i).
+    if pn == "FuzerEntries" and name and name:find("^%d$") then
+        return FRIENDLY.__glowbeChoice(el, tonumber(name)), true
+    end
+    -- INFO on a building with no close button: tapping outside closes it.
+    if name == "FadedBG" and pn == "object_info" then return "Close", true end
+    if (name == "YesButton" or name == "NoButton") and (pn == "popup_text_entry" or pn == "popup_name_entry") then
+        if name == "NoButton" then return "Cancel", true end
+        local d = (elementText(findNamed(p, "Description", 1)) or ""):lower()
+        if d:find("friend", 1, true) then return "Send friend request", true end
+        return pn == "popup_name_entry" and "Save" or "OK", true
+    end
     -- Clubbox unlock fanfare ("DJ Epic has joined the Act"): tap anywhere.
     if name == "Fade" and pn == "popup_clubbox_unlock_fanfare" then return "Continue", true end
     -- Clubbox HUD: the Hype bar.
@@ -889,10 +910,12 @@ local function socialLabel(el, name)
     end
     -- The full-screen "Click to continue" area (rewards, card packs, the new
     -- island fanfare), shown only while that caption is showing.
-    if (name == "Fade" or name == "TouchBlocker") and p then
-        for _, t in ipairs(descendantText(p, 0)) do
-            if t:lower():find("continue") then return "Continue", true end
-        end
+    if (name == "Fade" or name == "TouchBlocker") and p and FRIENDLY.__saysContinue(p, 0) then
+        return "Continue", true
+    end
+    -- Hatch fanfare after the egg cracks: the NEW badge says what hatched.
+    if name == "NewLabel" and pn == "popup_hatch_monster_fanfare" then
+        return FRIENDLY.__hatchedText(p) or "New monster", true
     end
     -- Breeding list rows: name, species, whether picked, and who they'd breed with.
     if name:find("^entry%d+$") and pn == "List" then
@@ -995,11 +1018,18 @@ local function socialLabel(el, name)
         end
         local off = false
         pcall(function() off = el.enabled == false end)
-        return action .. ", " .. cardSummary(p) .. (off and ", unavailable" or ""), true
+        -- Short: the card itself already reads level and last login.
+        local who = cardName(p) or "this friend"
+        local t
+        if action == "Light torch" then t = "Light " .. who .. "'s torch"
+        elseif action == "Send key" then t = "Send key to " .. who
+        elseif action == "Accept request" or action == "Decline request" then t = action .. " from " .. who
+        else t = action .. " " .. who end
+        return t .. (off and ", unavailable" or ""), true
     end
     if name == "FavoriteToggleButton" and pn and pn:find("^cardItem%d") then
         local s = comp(el, "Sprite", "spriteName")
-        return (s == "favoritestar" and "Favourite, on" or "Favourite, off") .. ", " .. cardSummary(p), true
+        return "Favourite " .. (cardName(p) or "this friend") .. (s == "favoritestar" and ", on" or ", off"), true
     end
     if name == "VisitButton" and pn and pn:find("^topIslandEntry%d") then
         local parts = { "Visit" }
@@ -1290,7 +1320,8 @@ local function collectControls(root, out, depth, group)
         end
         if child and isVisible(child) then
             local isRow = hasClickableDescendant(child, 0) and #rowText(child) > 0
-            if isClickable(child) and (isRow or not hasClickableDescendant(child, 0)) then
+            -- A friend card is already listed once, as "open profile" above.
+            if not card and isClickable(child) and (isRow or not hasClickableDescendant(child, 0)) then
                 local lbl, final = controlLabel(child, cname)
                 -- Market items: the price is a number with a currency icon.
                 if lbl and cname == "Button" and FRIENDLY.__spinPrize and elementName(root) == "minigame_spinprize" then
@@ -1690,7 +1721,7 @@ local function menuTick(root, file)
     runPending(now, root)
     if file == "contextbar" and contextbarHook then pcall(contextbarHook) end
     if file == "hud" and readyHook then pcall(readyHook, now) end
-    if file == "popup_name_entry" and menuState.nameEcho then pcall(menuState.nameEcho, root) end
+    if (file == "popup_name_entry" or file == "popup_text_entry") and menuState.nameEcho then pcall(menuState.nameEcho, root) end
     if file == "minigame_spinprize" and FRIENDLY.__spinTick then pcall(FRIENDLY.__spinTick, root) end
     if file == "login_base" and FRIENDLY.__loadingTick then pcall(FRIENDLY.__loadingTick, root) end
     if file == "newsflash" and FRIENDLY.__newsTick then pcall(FRIENDLY.__newsTick, root, now) end
@@ -1921,6 +1952,16 @@ POPUP_READERS.popup_name_entry = function(popup)
     return joinSentences({ title, desc,
         cur ~= "" and ("The name is now " .. cur) or "The name is empty",
         "Type a new name. Backspace deletes the last letter, Enter saves, Escape cancels" })
+end
+POPUP_READERS.popup_text_entry = function(popup)
+    local desc = elementText(findNamed(popup, "Description", 4))
+    local cur = menuState.nameEntryText(popup)
+    menuState.nameText = cur
+    local friend = desc and desc:lower():find("friend", 1, true)
+    return joinSentences({ desc or elementText(findNamed(popup, "TitleLabel", 4)) or "Enter text",
+        cur ~= "" and ("It says " .. cur) or "It's empty",
+        friend and "Type or paste the code with Control V, then Tab to Send friend request"
+            or "Type the text, then Tab to OK. Escape cancels" })
 end
 function menuState.nameEcho(root)
     local cur = menuState.nameEntryText(root)
@@ -2691,6 +2732,21 @@ function FRIENDLY.__resultsTick(root, now)
     B.resSaid = true
     later(0.5, function() say(table.concat(parts, " "), true) end)
 end
+-- REMOVE on a selected tree or rock: its price, as template_removecost.xml
+-- shows it (game.objectRemovalCoinCost() for the selected object).
+function FRIENDLY.__removeLabel(el)
+    local text = elementText(el) or ""
+    if text:upper() ~= "REMOVE" then return nil end
+    local cost = nil
+    pcall(function() cost = tonumber(game.objectRemovalCoinCost()) end)
+    if not cost then return nil end
+    pcall(function()
+        FRIENDLY.__sidPrice = FRIENDLY.__sidPrice or {}
+        FRIENDLY.__sidPrice[game.selectedStructureId()] = cost
+    end)
+    local t = tostring(math.floor(cost)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    return "Remove, " .. t .. " coins"
+end
 -- UPGRADE on a selected building's bar: the price the bar shows as a coloured
 -- number (template_upgradecost.xml: game.structureUpgradeCost/Currency/Sale).
 FRIENDLY.__upgradeCurrency = { coins = "Coins", coin = "Coins", diamond = "Diamonds", diamonds = "Diamonds",
@@ -2940,6 +2996,16 @@ function FRIENDLY.__mixTick(root, now)
             end
         end
     end
+end
+-- The Glowbe colour of a CONJURE choice. Not in the game's text; the game
+-- tints them in code (tintDefaultBuddy sets one of red, green, blue to full
+-- by the choice number: 0 red, 1 green, 2 blue).
+FRIENDLY.__glowbeNames = { [0] = "Red Glowbe", [1] = "Green Glowbe", [2] = "Blue Glowbe" }
+function FRIENDLY.__glowbeChoice(entry, i)
+    return FRIENDLY.__glowbeNames[i] or ("Glowbe " .. (i + 1))
+end
+POPUP_READERS.fuzer_create = function(popup)
+    return "Conjure a Glowbe: Red, Green or Blue"
 end
 POPUP_READERS.popup_clubbox_unlock_fanfare = function(popup)
     local who = shownText(popup, "MonsterName")
@@ -3678,6 +3744,13 @@ local TAP_POINTS = {
     { 0.5, 0.47 }, { 0.5, 0.51 }, { 0.5, 0.40 }, { 0.5, 0.33 }, { 0.46, 0.42 }, { 0.54, 0.42 },
 }
 local TAP_CHECK_SECONDS = 0.45
+-- Second pass when every point hit something in front (a small rock behind
+-- a building): zoom in closer, so the object is bigger on screen, and try
+-- tighter points around its middle.
+FRIENDLY.__tapCloseZoom = 1.6
+FRIENDLY.__tapClosePoints = {
+    { 0.5, 0.48 }, { 0.5, 0.44 }, { 0.47, 0.46 }, { 0.53, 0.46 }, { 0.5, 0.40 }, { 0.5, 0.52 },
+}
 
 -- Tap a world object like a finger would: centre the camera on it with the
 -- game's zoomCameraToObject, then click. A real tap collects treats and coins,
@@ -3696,20 +3769,44 @@ local function tapEntity(entity, name, wantKey, reselect, done, untilSomething)
         if done then done(false) end
         return
     end
+    -- A tap can make the object go away instead of selecting it (clearing a
+    -- tree or rock whose removal has finished). Then stop: further taps would
+    -- land on whatever was behind it.
+    local sid = wantKey and tonumber(tostring(wantKey):match("^s(%d+)$"))
+    local function gone()
+        if not sid then return false end
+        local e = nil
+        pcall(function() e = game.GetStructure(sid) end)
+        return e == nil
+    end
+    local points, closer = TAP_POINTS, false
     local function try(i)
-        local pt = TAP_POINTS[i]
+        local pt = points[i]
         local clickedAt = clock()
         menuState.tap(pt[1], pt[2])
         later(TAP_CHECK_SECONDS, function()
+            if gone() then
+                a11y_log("[tap] " .. name .. " went away after point " .. i)
+                if done then done(true, "gone") end
+                return
+            end
             local got = selectionKey()
             -- A miss is something else getting selected (a tree in front),
             -- or, when asked, nothing happening at all.
             local miss = selectionIs(wantKey, name) == false
                 or (untilSomething and got == nil and not menuState.openedSince(clickedAt))
             a11y_log("[tap] " .. name .. " point " .. i .. " -> " .. tostring(got) .. (miss and " (miss)" or ""))
-            if miss and i < #TAP_POINTS then
+            if miss and i < #points then
                 if reselect then pcall(reselect) end
                 later(0.2, function() try(i + 1) end)
+            elseif miss and not closer and got ~= nil then
+                -- Everything hit something else: zoom in and try again.
+                closer, points = true, FRIENDLY.__tapClosePoints
+                if reselect then pcall(reselect) end
+                a11y_log("[tap] " .. name .. ": zooming in closer")
+                local zok = pcall(function() game.worldContext():zoomCameraToObject(entity, FRIENDLY.__tapCloseZoom, TAP_SECONDS) end)
+                if zok then later(TAP_SECONDS + 0.25, function() try(1) end)
+                elseif done then done(false) end
             elseif done then
                 if miss and reselect then pcall(reselect) end
                 done(not miss)
@@ -3809,9 +3906,12 @@ local function activateObject(entity, label, select, wantKey)
         end
         a11y_log("[tap] direct select of " .. label .. " didn't take (" .. tostring(got) .. "), tapping")
         local tapStart = clock()
-        tapEntity(entity, label, wantKey, select, function(hit)
+        tapEntity(entity, label, wantKey, select, function(hit, how)
             later(0.15, function()
-                if hit and menuState.openedSince(tapStart) then
+                if how == "gone" then
+                    FRIENDLY.__objCache = nil
+                    say(label .. " cleared away", false)
+                elseif hit and menuState.openedSince(tapStart) then
                     -- The tap opened a screen (the hatching fanfare, a notice):
                     -- its own announcement says what happened; don't talk over it.
                     a11y_log("[tap] " .. label .. " opened a screen")
@@ -4052,7 +4152,7 @@ local function islandStructureIds()
     return ids
 end
 
-local OBJECT_GROUPS = { [0] = "Buildings", [1] = "Monsters", [2] = "Decorations", [3] = "Trees and rocks" }
+local OBJECT_GROUPS = { [0] = "Buildings", [1] = "Monsters", [2] = "Decorations", [3] = "Trees and rocks", [4] = "Clearing" }
 
 -- Visiting a friend's island (one table lookup: the visiting HUD ticked just now).
 function FRIENDLY.__visiting()
@@ -4167,7 +4267,16 @@ local function islandObjects()
         pcall(function() ent = game.GetStructure(id) end)
         local label = structureLabel(id) or "Structure"
         local rank = entityIs(ent, "isObstacle") and 3 or (entityIs(ent, "isDecoration") and 2 or 0)
-        structs[#structs + 1] = { id = id, label = label, rank = rank }
+        -- Trees and rocks being removed, or done and waiting for a tap, get a
+        -- group of their own ("Clearing"), only while there are any.
+        local clearing = nil
+        if rank == 3 then
+            local st = (structureStatus(id) or ""):lower()
+            if st:find("removal finished", 1, true) then clearing = 1
+            elseif st:find("being removed", 1, true) then clearing = 2 end
+            if clearing then rank = 4 end
+        end
+        structs[#structs + 1] = { id = id, label = label, rank = rank, clearing = clearing }
         total[label] = (total[label] or 0) + 1
     end
     for _, st in ipairs(structs) do
@@ -4176,7 +4285,7 @@ local function islandObjects()
             st.label = st.label .. " " .. nth[st.label]
         end
         local id, label = st.id, st.label
-        st.item = { withStatus(label, structureStatus(id)), name = label, rank = st.rank,
+        st.item = { withStatus(label, structureStatus(id)), name = label, rank = st.rank, sid = id,
             live = function() return withStatus(label, structureStatus(id)) end, function()
             vmenu.active = false
             local ent = nil
@@ -4205,6 +4314,10 @@ local function islandObjects()
     end)
     for rank = 2, 3 do
         for _, st in ipairs(structs) do if st.rank == rank then items[#items + 1] = st.item end end
+    end
+    -- Clearing: finished ones first (ready to tap away), then being removed.
+    for c = 1, 2 do
+        for _, st in ipairs(structs) do if st.clearing == c then items[#items + 1] = st.item end end
     end
     return items
 end
@@ -5371,11 +5484,55 @@ function nav.crackEgg(n)
         local root = liveMenu("popup_hatch_monster_fanfare")
         local egg = root and findNamed(root, "EggImage", 4)
         if not egg or not isClickable(egg) or n > 9 then
-            if n > 1 then say("The egg cracked open. Tab for Continue when it appears.", true) end
+            if n > 1 then nav.hatchedSay(0) end
             return
         end
         pressElement(egg)
         nav.crackEgg(n + 1)
+    end)
+end
+
+-- Whether any visible text under el (3 levels) says "continue".
+function FRIENDLY.__saysContinue(el, depth)
+    if depth > 3 then return false end
+    local kids = nil; pcall(function() kids = el:elements() end)
+    if not kids then return false end
+    local n = 0; pcall(function() n = kids:size() end)
+    for i = 0, n - 1 do
+        local c = nil; pcall(function() c = kids[i] end)
+        if c then
+            local vis = 1; pcall(function() vis = c.Text("visible"):GetInt() end)
+            local t = vis ~= 0 and elementText(c) or nil
+            if t and t:lower():find("continue", 1, true) then return true end
+            if FRIENDLY.__saysContinue(c, depth + 1) then return true end
+        end
+    end
+    return false
+end
+
+-- "You discovered Potbelly! Class: Natural", from the fanfare once it shows.
+function FRIENDLY.__hatchedText(panel)
+    local function txt(nm) return elementText(findNamed(panel, nm, 1)) end
+    local name = txt("PostNotificationMonsterName")
+    if not name then return nil end
+    local parts = { (txt("PostNotificationTop") or "You discovered") .. " " .. name }
+    local cls = txt("PostNotificationClass")
+    if cls then parts[#parts + 1] = cls end
+    return table.concat(parts, ", ")
+end
+function nav.hatchedSay(n)
+    later(0.5, function()
+        local root = liveMenu("popup_hatch_monster_fanfare")
+        if not root then return end
+        local panel = findNamed(root, "popup_hatch_monster_fanfare", 3)
+        local t = panel and FRIENDLY.__hatchedText(panel)
+        if t then
+            say(t .. ". Tab to Continue", true)
+        elseif n < 12 then
+            nav.hatchedSay(n + 1)
+        else
+            say("The egg cracked open. Tab to Continue", true)
+        end
     end)
 end
 
@@ -5451,6 +5608,11 @@ local function navActivate()
         pcall(nav.muteGameEnter)
         menuState.touch()
         pcall(el.virtual)
+        return
+    end
+    -- "Close" on INFO (its background): do what Escape does.
+    if elementName(el) == "FadedBG" and elementName(el:parent()) == "object_info" and FRIENDLY.__goBack then
+        FRIENDLY.__goBack("escape")
         return
     end
     -- Enter on a slider resets it (a tap would set it to wherever it landed).
@@ -6519,11 +6681,13 @@ if type(jeode) == "table" and type(jeode.registerGlobal) == "function" then
             camera = nav.cameraKey,
             tutstep = announceTutorialStep,
             xp = function() FRIENDLY.__xp() end,
+            advice = function() FRIENDLY.__advice() end,
         }
         local fn = run[what]
         if fn then fn() end
     end)
     jeode.registerGlobal("a11y_back", goBack)
+    FRIENDLY.__goBack = goBack
     -- Comma and Period: free spots while placing, otherwise the same as
     -- Shift+Tab and Tab (Shift+Tab also opens the Steam overlay). Left alone
     -- while a text box is open, so names can have commas and full stops.
@@ -6632,6 +6796,129 @@ function FRIENDLY.__adjust(dir)
 end
     jeode.registerGlobal("a11y_camera", FRIENDLY.__keyGuard(nav.cameraKey))
     jeode.registerGlobal("a11y_adjust", FRIENDLY.__keyGuard(function(dir) FRIENDLY.__adjust(dir) end))
+    -- F (fallback Control+Shift+F): advice for your island. How many trees
+    -- and rocks are in the way, the cheapest one to clear (by its name in the
+    -- Trees and rocks list, e.g. "Small Rock 3", with Tab focus moved onto it
+    -- so Enter selects it), and whether coins are waiting.
+    function FRIENDLY.__adviceCheapest()
+        local r = nil
+        pcall(function() r = game.getCheapestObstacle() end)
+        if r == nil then pcall(function() r = game.getCheapestObstacle(game.player():getActiveIsland()) end) end
+        local id = nil
+        if type(r) == "number" then id = r
+        elseif r ~= nil then
+            for _, m in ipairs({ "id", "getId", "userStructureId", "uniqueId" }) do
+                if not id then pcall(function() id = tonumber(r[m](r)) end) end
+            end
+        end
+        if not FRIENDLY.__adviceLogged then
+            FRIENDLY.__adviceLogged = true
+            a11y_log("[advice] getCheapestObstacle -> " .. tostring(r) .. " (" .. type(r) .. "), id " .. tostring(id))
+        end
+        return id
+    end
+    function FRIENDLY.__commas(n)
+        local t = tostring(math.floor(n))
+        local out = t:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+        return (out:gsub("^,", ""))
+    end
+    function FRIENDLY.__advice()
+        if popupOpen() or topOverlay() or placing() then say("Advice works on your island, with nothing open", true) return end
+        if FRIENDLY.__visiting() or liveMenu("hud_clubbox") then say("Advice is for your own island", true) return end
+        local objs = islandObjects()
+        local parts, obstacles = {}, {}
+        for _, o in ipairs(objs) do if o.rank == 3 or o.rank == 4 then obstacles[#obstacles + 1] = o end end
+        local function busy(o)
+            local t = (o.live and o.live() or o[1]):lower()
+            return t:find("being removed", 1, true) or t:find("removal finished", 1, true)
+        end
+        local function kind(o) return (o.name:gsub("%s+%d+$", "")) end
+        -- Which trees and rocks box in your monsters and buildings: within a
+        -- few tiles of one (tiles from the native a11y_entity_tile; one tile
+        -- per object, so this is close, not exact).
+        local others = {}
+        for _, l in ipairs(landmarks(true)) do
+            if l.rank == 0 or l.rank == 1 then others[#others + 1] = l end
+        end
+        local blocking = {}
+        for _, o in ipairs(obstacles) do
+            local x, y = nil, nil
+            pcall(function() x, y = entityTile(game.GetStructure(o.sid)) end)
+            if x and not busy(o) then
+                for _, l in ipairs(others) do
+                    local reach = l.rank == 0 and 3 or 4
+                    if abs(l.x - x) <= reach and abs(l.y - y) <= reach then
+                        blocking[#blocking + 1] = o
+                        break
+                    end
+                end
+            end
+        end
+        if #obstacles == 0 then
+            parts[#parts + 1] = "No trees or rocks left on this island"
+        elseif #blocking == 0 then
+            parts[#parts + 1] = "None of your " .. #obstacles .. " trees and rocks are right next to your monsters or buildings"
+        else
+            parts[#parts + 1] = #blocking .. " of your " .. #obstacles .. " trees and rocks "
+                .. (#blocking == 1 and "is" or "are") .. " right next to your monsters or buildings"
+        end
+        -- Which of those to clear first: the game's cheapest kind, then kinds
+        -- whose REMOVE price you've heard (cheapest first), then by size.
+        local cid, cheapKind = FRIENDLY.__adviceCheapest(), nil
+        for _, o in ipairs(obstacles) do if o.sid == cid then cheapKind = kind(o) end end
+        local kindPrice = {}
+        for _, o in ipairs(obstacles) do
+            local pr = FRIENDLY.__sidPrice and FRIENDLY.__sidPrice[o.sid]
+            if pr and (not kindPrice[kind(o)] or pr < kindPrice[kind(o)]) then kindPrice[kind(o)] = pr end
+        end
+        local function sizeRank(k)
+            local l = k:lower()
+            if l:find("small") or l:find("tiny") then return 1 end
+            if l:find("medium") then return 2 end
+            if l:find("big") or l:find("large") then return 3 end
+            return 4
+        end
+        local function cost(o)
+            if kind(o) == cheapKind then return -1 end
+            return kindPrice[kind(o)] or (1e12 + sizeRank(kind(o)))
+        end
+        table.sort(blocking, function(a, b)
+            local ca, cb = cost(a), cost(b)
+            if ca ~= cb then return ca < cb end
+            return a.name < b.name
+        end)
+        local target = blocking[1]
+        if target then
+            local pr = kindPrice[kind(target)]
+            parts[#parts + 1] = "Easiest to clear first: " .. target.name
+                .. (pr and (", " .. FRIENDLY.__commas(pr) .. " coins") or "")
+            if #blocking > 1 then
+                local more = {}
+                for i = 2, math.min(3, #blocking) do more[#more + 1] = blocking[i].name end
+                parts[#parts + 1] = "Then " .. table.concat(more, " and ")
+                    .. (#blocking > 3 and (", and " .. (#blocking - 3) .. " more") or "")
+            end
+            parts[#parts + 1] = "Enter selects " .. target.name .. ", and REMOVE says the price"
+        end
+        local ready = false
+        pcall(function() ready = game.player():getActiveIsland():hasMonsterCollectReady() and true or false end)
+        if ready then parts[#parts + 1] = "Your monsters have coins to collect" end
+        say(joinSentences(parts), true)
+        -- Put Tab on that obstacle, so Enter selects it.
+        if target then
+            FRIENDLY.__objCache = nil
+            nav.group = OBJECT_GROUPS[3]
+            if navEnsure() then
+                for i, lbl in ipairs(nav.labels) do
+                    if lbl == target.name or lbl:sub(1, #target.name + 1) == target.name .. "," then
+                        nav.index = i
+                        break
+                    end
+                end
+            end
+        end
+    end
+    jeode.registerGlobal("a11y_advice", FRIENDLY.__keyGuard(function() FRIENDLY.__advice() end))
     jeode.registerGlobal("a11y_poi", function(dir)
         if FRIENDLY.__keysLocked() then return end
         if placing() then poiStep(dir) else navGroupJump(dir) end

@@ -79,6 +79,7 @@ Only needed if `install.bat` doesn't work for you.
 - [tutorial.md](tutorial.md): the game's tutorial, step by step, with the keys to press at each step.
 - [getting-started.md](getting-started.md): what to do after the tutorial, from your daily routine to breeding, beds and minigames.
 - [breeding-guide.md](breeding-guide.md): what to breed next once the game stops telling you, island by island, with breeding times.
+- [clubbox-guide.md](clubbox-guide.md): the Clubbox event, from the Hype game and its rewards to the CUSTOMIXER.
 
 ## Keys
 
@@ -98,6 +99,7 @@ The single-letter keys (A, W, X, M, O, I, C, T) do nothing while a text box is o
 | A (fallback: Control+Shift+A) | Status: coins, diamonds, food, level and so on. On the loading screen, how far loading has got. In the Clubbox, the act, your Hype, tickets and time left. |
 | W (fallback: Control+Shift+W) | What now: things that are ready and your current goals. |
 | X (fallback: Control+Shift+X) | XP: how much you have towards the next level and how much is left. |
+| F (fallback: Control+Shift+F) | Advice for your island: how many trees and rocks are right next to your monsters and buildings, which one is easiest to clear first (by its name in the Trees and rocks list), and whether coins are waiting. Tab moves onto that tree or rock, so Enter selects it. |
 | M (fallback: Control+Shift+M) | Places: Market, Book of Monsters, Map, Goals, Friends, Mail, Options. |
 | O (fallback: Control+Shift+O) | A list of everything on your island. |
 | I (fallback: Control+Shift+I) | With a monster selected: what it looks like, and its elements. Descriptions are written from the game's own pictures and cover the natural monsters (Plant Island and the other early islands) and the Dipsters so far; more will be added. |

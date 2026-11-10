@@ -2,6 +2,27 @@
 
 What changed in each version of My Singing Monsters Access, newest first. Changes that are done but not yet in a release are listed under Unreleased.
 
+## Unreleased
+
+### Added
+
+- F (fallback Control+Shift+F) gives advice for your island: how many trees and rocks are right next to your monsters and buildings, which one is easiest to clear first by its name in the list, for example "Small Rock 3", and whether coins are waiting. Tab moves onto it, so Enter selects it.
+- Trees and rocks being removed, or ready to finish, get their own Clearing group in the island list, shown only while there are some.
+- The Fuzer: the conjure screen says what it makes, and the three Glowbes are named Red, Green and Blue.
+- A Clubbox guide, linked from the README.
+
+### Improved
+
+- REMOVE on a tree or rock says its price, for example "Remove, 1,250 coins".
+- After a tree or rock is cleared away, the mod says so and stops, instead of tapping whatever is behind it.
+- When something is in front of a tree or rock you're tapping, the mod zooms in closer and tries again.
+- After an egg cracks, you hear what hatched, for example "You discovered Potbelly!, Class: Natural", and Continue is in the Tab list. Before, only a NEW button showed and the screen couldn't be left.
+- Screens you tap to continue are found even when they have a lot of text on them.
+- The friend code box says what it's for, reads the code you type or paste, and its buttons say "Send friend request" and "Cancel" instead of Yes and No. Naming a monster says "Save" and "Cancel".
+- Friend card buttons are short: "Light Bob's torch", "Send key to Bob", "Favourite Bob, on/off".
+- Each friend card is in the Tab list once, instead of twice.
+- The Close button on a building's INFO screen works.
+
 ## 0.1.13-alpha - 2026-11-09
 
 ### Added
